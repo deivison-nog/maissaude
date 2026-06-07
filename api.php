@@ -11,7 +11,7 @@ function chamarApi(string $url): array
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_HTTPHEADER => [
             'Accept: application/json',
-            'User-Agent: Mozilla/5.0 PHP Saúde Demo'
+            'User-Agent: Mozilla/5.0 PHP Saude Demo'
         ]
     ]);
 
@@ -22,17 +22,21 @@ function chamarApi(string $url): array
     curl_close($ch);
 
     if ($error) {
-        return ['erro' => $error];
+        return ['erro' => $error, 'url' => $url];
     }
 
     if ($httpCode !== 200) {
-        return ['erro' => 'Erro HTTP: ' . $httpCode];
+        return ['erro' => 'Erro HTTP: ' . $httpCode, 'url' => $url];
     }
 
     $data = json_decode($response, true);
 
     if (!is_array($data)) {
-        return ['erro' => 'Resposta inválida da API'];
+        return [
+            'erro' => 'Resposta inválida da API',
+            'url' => $url,
+            'resposta_bruta' => mb_substr((string) $response, 0, 1000)
+        ];
     }
 
     return $data;
@@ -48,7 +52,7 @@ function normalizarTexto(string $texto): string
 function extrairValor(array $item, array $campos): string
 {
     foreach ($campos as $campo) {
-        if (isset($item[$campo]) && $item[$campo] !== null && $item[$campo] !== '') {
+        if (array_key_exists($campo, $item) && $item[$campo] !== null && $item[$campo] !== '') {
             return normalizarTexto((string) $item[$campo]);
         }
     }
@@ -56,107 +60,186 @@ function extrairValor(array $item, array $campos): string
     return '';
 }
 
-function obterDadosBrutosMunicipios(): array
+function ehListaDeObjetos(array $valor): bool
 {
-    $urls = [
-        'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio',
-        'https://apidadosabertos.saude.gov.br/v1/macrorregiao-e-regiao-de-saude/municipio'
-    ];
+    if ($valor === []) {
+        return false;
+    }
 
-    $ultimoErro = 'Não foi possível consultar a API';
+    $primeiro = reset($valor);
+    return is_array($primeiro);
+}
 
-    foreach ($urls as $url) {
-        $tentativa = chamarApi($url);
+function encontrarListaDeObjetos(array $dados): array
+{
+    if (ehListaDeObjetos($dados)) {
+        return array_values($dados);
+    }
 
-        if (!isset($tentativa['erro'])) {
-            return $tentativa;
+    $chavesPreferidas = ['data', 'items', 'result', 'results', 'records', 'rows'];
+
+    foreach ($chavesPreferidas as $chave) {
+        if (isset($dados[$chave]) && is_array($dados[$chave]) && ehListaDeObjetos($dados[$chave])) {
+            return array_values($dados[$chave]);
+        }
+    }
+
+    foreach ($dados as $valor) {
+        if (is_array($valor) && ehListaDeObjetos($valor)) {
+            return array_values($valor);
+        }
+    }
+
+    foreach ($dados as $valor) {
+        if (is_array($valor)) {
+            $lista = encontrarListaDeObjetos($valor);
+            if ($lista !== []) {
+                return $lista;
+            }
+        }
+    }
+
+    return [];
+}
+
+function obterListaMunicipiosPorUf(string $uf): array
+{
+    $uf = strtoupper(trim($uf));
+
+    if ($uf === '') {
+        return ['erro' => 'UF não informada'];
+    }
+
+    $offset = 0;
+    $limit = 860;
+    $todos = [];
+    $ultimaResposta = null;
+
+    while (true) {
+        $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=' . $limit . '&offset=' . $offset;
+        $dados = chamarApi($url);
+        $ultimaResposta = $dados;
+
+        if (isset($dados['erro'])) {
+            return $dados;
         }
 
-        $ultimoErro = $tentativa['erro'];
+        $lista = encontrarListaDeObjetos($dados);
+
+        if ($lista === []) {
+            return [
+                'erro' => 'Estrutura JSON não reconhecida',
+                'url' => $url,
+                'json_bruto' => $dados
+            ];
+        }
+
+        $quantidade = count($lista);
+        $todos = array_merge($todos, $lista);
+
+        if ($quantidade < $limit) {
+            break;
+        }
+
+        $offset += $limit;
+
+        if ($offset > 10000) {
+            break;
+        }
     }
 
-    return ['erro' => $ultimoErro];
+    return $todos;
 }
 
-function normalizarListaRegistros(array $dados): array
+function obterEstadosFixos(): array
 {
-    $lista = [];
-
-    if (isset($dados[0]) && is_array($dados[0])) {
-        $lista = $dados;
-    } elseif (isset($dados['data']) && is_array($dados['data'])) {
-        $lista = $dados['data'];
-    } elseif (isset($dados['items']) && is_array($dados['items'])) {
-        $lista = $dados['items'];
-    } elseif (isset($dados['result']) && is_array($dados['result'])) {
-        $lista = $dados['result'];
-    }
-
-    return array_values(array_filter($lista, 'is_array'));
+    return [
+        'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA',
+        'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN',
+        'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+    ];
 }
 
-function obterEstadosECidades(): array
+function obterEstadosECidades(string $uf = ''): array
 {
-    $dados = obterDadosBrutosMunicipios();
+    $estados = obterEstadosFixos();
 
-    $estados = [];
-    $cidadesPorEstado = [];
-    $registros = [];
-
-    if (isset($dados['erro'])) {
+    if ($uf === '') {
         return [
-            'erro' => $dados['erro'],
-            'estados' => [],
+            'erro' => '',
+            'estados' => $estados,
             'cidadesPorEstado' => [],
             'registros' => [],
-            'total_bruto' => 0
+            'total_registros' => 0,
+            'total_estados' => count($estados)
         ];
     }
 
-    $lista = normalizarListaRegistros($dados);
+    $lista = obterListaMunicipiosPorUf($uf);
+
+    if (isset($lista['erro'])) {
+        return [
+            'erro' => $lista['erro'],
+            'estados' => $estados,
+            'cidadesPorEstado' => [],
+            'registros' => [],
+            'debug' => $lista,
+            'total_registros' => 0,
+            'total_estados' => count($estados)
+        ];
+    }
+
+    $cidadesPorEstado = [];
+    $registrosIndexados = [];
 
     foreach ($lista as $item) {
-        $uf = extrairValor($item, ['uf', 'sigla_uf', 'estado']);
-        $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'cidade']);
-        $regiao = extrairValor($item, ['regiao_saude', 'nome_regiao_saude', 'regiao']);
-        $macrorregiao = extrairValor($item, ['macrorregiao', 'nome_macrorregiao']);
-
-        if ($uf === '' || $municipio === '') {
+        if (!is_array($item)) {
             continue;
         }
 
-        $uf = strtoupper($uf);
+        $ufRegistro = extrairValor($item, ['sigla_uf', 'uf', 'estado']);
+        $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'cidade']);
+        $regiaoSaude = extrairValor($item, ['regiao_saude', 'nome_regiao_saude']);
+        $macrorregiaoSaude = extrairValor($item, ['macrorregiao_saude', 'macrorregiao', 'nome_macrorregiao']);
+        $codigoMunicipio = extrairValor($item, ['codigo_municipio', 'codigo_ibge']);
 
-        $estados[$uf] = $uf;
-        $cidadesPorEstado[$uf][] = $municipio;
+        if ($ufRegistro === '' || $municipio === '') {
+            continue;
+        }
 
-        $chave = $uf . '|' . mb_strtolower($municipio);
-        $registros[$chave] = [
-            'uf' => $uf,
+        $ufRegistro = strtoupper($ufRegistro);
+        $municipio = normalizarTexto($municipio);
+
+        $cidadesPorEstado[$ufRegistro][] = $municipio;
+
+        $chave = $ufRegistro . '|' . mb_strtolower($municipio);
+        $registrosIndexados[$chave] = [
+            'uf' => $ufRegistro,
             'municipio' => $municipio,
-            'regiao_saude' => $regiao,
-            'macrorregiao' => $macrorregiao
+            'codigo_municipio' => $codigoMunicipio,
+            'regiao_saude' => $regiaoSaude,
+            'macrorregiao_saude' => $macrorregiaoSaude
         ];
     }
 
-    ksort($estados);
-
-    foreach ($cidadesPorEstado as $uf => $cidades) {
+    foreach ($cidadesPorEstado as $ufKey => $cidades) {
         $cidades = array_unique($cidades);
         natcasesort($cidades);
-        $cidadesPorEstado[$uf] = array_values($cidades);
+        $cidadesPorEstado[$ufKey] = array_values($cidades);
     }
 
-    $registros = array_values($registros);
+    $registros = array_values($registrosIndexados);
 
     usort($registros, function (array $a, array $b): int {
         return [$a['uf'], $a['municipio']] <=> [$b['uf'], $b['municipio']];
     });
 
     return [
-        'estados' => array_values($estados),
+        'erro' => '',
+        'estados' => $estados,
         'cidadesPorEstado' => $cidadesPorEstado,
         'registros' => $registros,
-        'total_bruto' => count($lista)
+        'total_registros' => count($lista),
+        'total_estados' => count($estados)
     ];
 }
