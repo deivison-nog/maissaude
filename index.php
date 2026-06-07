@@ -56,7 +56,7 @@ $estados = obterEstadosFixos();
     <button type="submit" disabled id="btn-consultar" aria-describedby="status">Consultar resultado</button>
 </form>
 
-<p id="status" class="muted"></p>
+<p id="status" class="muted" aria-live="polite"></p>
 <p id="erro" class="error"></p>
 
 <section id="painel-resultado" class="grid section-hidden">
@@ -168,7 +168,13 @@ function formatarEventoEpidemiologico(item) {
 
 async function buscarJson(url, errorMessage) {
     const response = await fetch(url);
-    const data = await response.json();
+    let data;
+
+    try {
+        data = await response.json();
+    } catch (error) {
+        throw new Error(`Resposta JSON inválida: ${error.message}`);
+    }
 
     if (!response.ok || data.erro) {
         throw new Error(data.erro || errorMessage);

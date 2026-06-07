@@ -4,7 +4,7 @@ require_once __DIR__ . '/api.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
-function responderJson(array $payload, int $statusCode = 200): never
+function responderJson(array $payload, int $statusCode = 200): void
 {
     http_response_code($statusCode);
     echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -58,7 +58,6 @@ $dados = obterEstadosECidades($uf);
 if ($dados['erro'] !== '') {
     responderJson([
         'erro' => $dados['erro'],
-        'debug' => $dados['debug'] ?? null,
     ], 502);
 }
 
@@ -100,7 +99,6 @@ switch ($action) {
         if (isset($itens['erro'])) {
             responderJson([
                 'erro' => 'Falha ao buscar estabelecimentos de saúde.',
-                'debug' => $itens,
             ], 502);
         }
 
@@ -119,7 +117,6 @@ switch ($action) {
         if (isset($itens['erro'])) {
             responderJson([
                 'erro' => 'Falha ao buscar hospitais e leitos.',
-                'debug' => $itens,
             ], 502);
         }
 
@@ -138,7 +135,6 @@ switch ($action) {
         if (isset($itens['erro'])) {
             responderJson([
                 'erro' => 'Falha ao buscar UBS.',
-                'debug' => $itens,
             ], 502);
         }
 
@@ -162,7 +158,6 @@ switch ($action) {
         if (isset($itens['erro'])) {
             responderJson([
                 'erro' => 'Falha ao buscar dados de arboviroses.',
-                'debug' => $itens,
             ], 502);
         }
 
@@ -182,7 +177,6 @@ switch ($action) {
         if (isset($itens['erro'])) {
             responderJson([
                 'erro' => 'Falha ao buscar dados do Mais Médicos.',
-                'debug' => $itens,
             ], 502);
         }
 
