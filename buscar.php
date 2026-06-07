@@ -112,6 +112,7 @@ switch ($action) {
             'total' => count($itens),
             'itens' => $itens,
         ]);
+        break;
 
     case 'hospitais':
         $itens = obterHospitaisPorMunicipio($uf, $municipio, $codigoMunicipio);
@@ -130,6 +131,7 @@ switch ($action) {
             'total' => count($itens),
             'itens' => $itens,
         ]);
+        break;
 
     case 'ubs':
         $itens = obterUbsPorMunicipio($uf, $municipio, $codigoMunicipio);
@@ -148,6 +150,7 @@ switch ($action) {
             'total' => count($itens),
             'itens' => $itens,
         ]);
+        break;
 
     case 'arboviroses':
         $doencaNormalizada = normalizarDoencaSolicitada($doenca);
@@ -172,6 +175,7 @@ switch ($action) {
             'total' => count($itens),
             'itens' => $itens,
         ]);
+        break;
 
     case 'mais-medicos':
         $itens = obterMaisMedicosPorMunicipio($uf, $municipio, $codigoMunicipio);
