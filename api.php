@@ -49,6 +49,56 @@ function normalizarTexto(string $texto): string
     return $texto;
 }
 
+function removerAcentos(string $texto): string
+{
+    $convertido = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
+    return $convertido !== false ? $convertido : $texto;
+}
+
+function nomeEstadoParaSigla(string $nome): string
+{
+    $nome = mb_strtoupper(normalizarTexto(removerAcentos($nome)));
+
+    $mapa = [
+        'ACRE' => 'AC',
+        'ALAGOAS' => 'AL',
+        'AMAPA' => 'AP',
+        'AMAZONAS' => 'AM',
+        'BAHIA' => 'BA',
+        'CEARA' => 'CE',
+        'DISTRITO FEDERAL' => 'DF',
+        'ESPIRITO SANTO' => 'ES',
+        'GOIAS' => 'GO',
+        'MARANHAO' => 'MA',
+        'MATO GROSSO' => 'MT',
+        'MATO GROSSO DO SUL' => 'MS',
+        'MINAS GERAIS' => 'MG',
+        'PARA' => 'PA',
+        'PARAIBA' => 'PB',
+        'PARANA' => 'PR',
+        'PERNAMBUCO' => 'PE',
+        'PIAUI' => 'PI',
+        'RIO DE JANEIRO' => 'RJ',
+        'RIO GRANDE DO NORTE' => 'RN',
+        'RIO GRANDE DO SUL' => 'RS',
+        'RONDONIA' => 'RO',
+        'RORAIMA' => 'RR',
+        'SANTA CATARINA' => 'SC',
+        'SAO PAULO' => 'SP',
+        'SERGIPE' => 'SE',
+        'TOCANTINS' => 'TO'
+    ];
+
+    return $mapa[$nome] ?? $nome;
+}
+
+function limparNomeMunicipio(string $municipio): string
+{
+    $municipio = normalizarTexto($municipio);
+    $municipio = preg_replace('/^[A-Z]{2}\s*-\s*/u', '', $municipio) ?? $municipio;
+    return trim($municipio);
+}
+
 function extrairValor(array $item, array $campos): string
 {
     foreach ($campos as $campo) {
@@ -110,43 +160,24 @@ function obterListaMunicipiosPorUf(string $uf): array
         return ['erro' => 'UF não informada'];
     }
 
-    $offset = 0;
-    $limit = 860;
-    $todos = [];
+    $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=860&offset=0';
+    $dados = chamarApi($url);
 
-    while (true) {
-        $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=' . $limit . '&offset=' . $offset;
-        $dados = chamarApi($url);
-
-        if (isset($dados['erro'])) {
-            return $dados;
-        }
-
-        $lista = encontrarListaDeObjetos($dados);
-
-        if ($lista === []) {
-            return [
-                'erro' => 'Estrutura JSON não reconhecida',
-                'url' => $url,
-                'json_bruto' => $dados
-            ];
-        }
-
-        $quantidade = count($lista);
-        $todos = array_merge($todos, $lista);
-
-        if ($quantidade < $limit) {
-            break;
-        }
-
-        $offset += $limit;
-
-        if ($offset > 10000) {
-            break;
-        }
+    if (isset($dados['erro'])) {
+        return $dados;
     }
 
-    return $todos;
+    $lista = encontrarListaDeObjetos($dados);
+
+    if ($lista === []) {
+        return [
+            'erro' => 'Estrutura JSON não reconhecida',
+            'url' => $url,
+            'json_bruto' => $dados
+        ];
+    }
+
+    return $lista;
 }
 
 function obterEstadosFixos(): array
@@ -167,9 +198,7 @@ function obterEstadosECidades(string $uf = ''): array
             'erro' => '',
             'estados' => $estados,
             'cidadesPorEstado' => [],
-            'registros' => [],
-            'total_registros' => 0,
-            'total_estados' => count($estados)
+            'registros' => []
         ];
     }
 
@@ -181,9 +210,7 @@ function obterEstadosECidades(string $uf = ''): array
             'estados' => $estados,
             'cidadesPorEstado' => [],
             'registros' => [],
-            'debug' => $lista,
-            'total_registros' => 0,
-            'total_estados' => count($estados)
+            'debug' => $lista
         ];
     }
 
@@ -205,8 +232,12 @@ function obterEstadosECidades(string $uf = ''): array
             continue;
         }
 
-        $ufRegistro = strtoupper($ufRegistro);
-        $municipio = normalizarTexto($municipio);
+        $ufRegistro = nomeEstadoParaSigla($ufRegistro);
+        $municipio = limparNomeMunicipio($municipio);
+
+        if ($ufRegistro === '' || $municipio === '') {
+            continue;
+        }
 
         $cidadesPorEstado[$ufRegistro][] = $municipio;
 
@@ -236,8 +267,6 @@ function obterEstadosECidades(string $uf = ''): array
         'erro' => '',
         'estados' => $estados,
         'cidadesPorEstado' => $cidadesPorEstado,
-        'registros' => $registros,
-        'total_registros' => count($lista),
-        'total_estados' => count($estados)
+        'registros' => $registros
     ];
 }
