@@ -3,6 +3,7 @@
 require_once __DIR__ . '/api.php';
 
 header('Content-Type: application/json; charset=UTF-8');
+const SEPARADOR_CHAVE_REGISTRO = '|';
 
 function normalizarMunicipioParaComparacao(string $municipio): string
 {
@@ -75,11 +76,11 @@ if ($action === 'resultado') {
             continue;
         }
 
-        $chave = $registro['uf'] . '|' . normalizarMunicipioParaComparacao($registro['municipio']);
+        $chave = $registro['uf'] . SEPARADOR_CHAVE_REGISTRO . normalizarMunicipioParaComparacao($registro['municipio']);
         $registrosIndexados[$chave] = $registro;
     }
 
-    $registroEncontrado = $registrosIndexados[$uf . '|' . $cidadeNormalizada] ?? null;
+    $registroEncontrado = $registrosIndexados[$uf . SEPARADOR_CHAVE_REGISTRO . $cidadeNormalizada] ?? null;
 
     if ($registroEncontrado === null) {
         http_response_code(404);

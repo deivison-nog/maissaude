@@ -1,5 +1,7 @@
 <?php
 
+const MAX_MUNICIPIOS_POR_UF = 860;
+
 function chamarApi(string $url): array
 {
     $ch = curl_init();
@@ -242,7 +244,7 @@ function obterListaMunicipiosPorUf(string $uf): array
         return ['erro' => 'UF não informada'];
     }
 
-    $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=860&offset=0';
+    $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=' . MAX_MUNICIPIOS_POR_UF . '&offset=0';
     $dados = chamarApi($url);
     $erroApiSaude = null;
 
