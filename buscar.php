@@ -3,98 +3,190 @@
 require_once __DIR__ . '/api.php';
 
 header('Content-Type: application/json; charset=UTF-8');
-const SEPARADOR_CHAVE_REGISTRO = '|';
 
-function normalizarMunicipioParaComparacao(string $municipio): string
+function responderJson(array $payload, int $statusCode = 200): void
 {
-    return mb_strtolower(limparNomeMunicipio($municipio));
+    http_response_code($statusCode);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+
+function normalizarDoencaSolicitada(string $doenca): string
+{
+    $mapa = [
+        'dengue' => 'dengue',
+        'zika' => 'zikavirus',
+        'zikavirus' => 'zikavirus',
+        'chikungunya' => 'chikungunya',
+    ];
+
+    return $mapa[strtolower(trim($doenca))] ?? '';
 }
 
 $action = trim((string) ($_GET['action'] ?? 'estados'));
 $uf = strtoupper(trim((string) ($_GET['uf'] ?? '')));
 $cidade = trim((string) ($_GET['cidade'] ?? ''));
-$acoesPermitidas = ['estados', 'cidades', 'resultado'];
+$doenca = trim((string) ($_GET['doenca'] ?? 'dengue'));
+$acoesPermitidas = [
+    'estados',
+    'cidades',
+    'resultado',
+    'estabelecimentos',
+    'hospitais',
+    'ubs',
+    'arboviroses',
+    'mais-medicos',
+];
 
 if (!in_array($action, $acoesPermitidas, true)) {
-    http_response_code(400);
-    echo json_encode([
-        'erro' => 'Ação inválida.',
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+    responderJson(['erro' => 'Ação inválida.'], 400);
 }
 
 if ($action === 'estados') {
-    echo json_encode([
+    responderJson([
         'erro' => '',
         'estados' => obterEstadosFixos(),
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+    ]);
 }
 
 if ($uf === '') {
-    http_response_code(400);
-    echo json_encode([
-        'erro' => 'UF não informada.',
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+    responderJson(['erro' => 'UF não informada.'], 400);
 }
 
 $dados = obterEstadosECidades($uf);
 
 if ($dados['erro'] !== '') {
-    http_response_code(502);
-    echo json_encode([
+    responderJson([
         'erro' => $dados['erro'],
         'debug' => $dados['debug'] ?? null,
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+    ], 502);
 }
 
 if ($action === 'cidades') {
-    echo json_encode([
+    responderJson([
         'erro' => '',
         'uf' => $uf,
         'cidades' => $dados['cidadesPorEstado'][$uf] ?? [],
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+    ]);
 }
 
-if ($action === 'resultado') {
-    if ($cidade === '') {
-        http_response_code(400);
-        echo json_encode([
-            'erro' => 'Cidade não informada.',
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
-    }
+if ($cidade === '') {
+    responderJson(['erro' => 'Cidade não informada.'], 400);
+}
 
-    $cidadeNormalizada = normalizarMunicipioParaComparacao($cidade);
-    $registrosIndexados = [];
+$registroEncontrado = obterRegistroMunicipio($dados['registros'], $uf, $cidade);
 
-    foreach ($dados['registros'] as $registro) {
-        if (!isset($registro['uf'], $registro['municipio'])) {
-            continue;
+if ($registroEncontrado === null) {
+    responderJson([
+        'erro' => 'Cidade não encontrada para a UF informada.',
+        'uf' => $uf,
+        'cidade' => $cidade,
+    ], 404);
+}
+
+$codigoMunicipio = (string) ($registroEncontrado['codigo_municipio'] ?? '');
+$municipio = (string) ($registroEncontrado['municipio'] ?? $cidade);
+
+switch ($action) {
+    case 'resultado':
+        responderJson([
+            'erro' => '',
+            'resultado' => $registroEncontrado,
+        ]);
+
+    case 'estabelecimentos':
+        $itens = obterEstabelecimentosPorMunicipio($codigoMunicipio, $uf, $municipio);
+        if (isset($itens['erro'])) {
+            responderJson([
+                'erro' => 'Falha ao buscar estabelecimentos de saúde.',
+                'debug' => $itens,
+            ], 502);
         }
 
-        $chave = $registro['uf'] . SEPARADOR_CHAVE_REGISTRO . normalizarMunicipioParaComparacao($registro['municipio']);
-        $registrosIndexados[$chave] = $registro;
-    }
-
-    $registroEncontrado = $registrosIndexados[$uf . SEPARADOR_CHAVE_REGISTRO . $cidadeNormalizada] ?? null;
-
-    if ($registroEncontrado === null) {
-        http_response_code(404);
-        echo json_encode([
-            'erro' => 'Cidade não encontrada para a UF informada.',
+        responderJson([
+            'erro' => '',
             'uf' => $uf,
-            'cidade' => $cidade,
-        ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
-    }
+            'cidade' => $municipio,
+            'codigo_municipio' => $codigoMunicipio,
+            'total' => count($itens),
+            'itens' => $itens,
+        ]);
 
-    echo json_encode([
-        'erro' => '',
-        'resultado' => $registroEncontrado,
-    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    exit;
+    case 'hospitais':
+        $itens = obterHospitaisPorMunicipio($uf, $municipio, $codigoMunicipio);
+        if (isset($itens['erro'])) {
+            responderJson([
+                'erro' => 'Falha ao buscar hospitais e leitos.',
+                'debug' => $itens,
+            ], 502);
+        }
+
+        responderJson([
+            'erro' => '',
+            'uf' => $uf,
+            'cidade' => $municipio,
+            'codigo_municipio' => $codigoMunicipio,
+            'total' => count($itens),
+            'itens' => $itens,
+        ]);
+
+    case 'ubs':
+        $itens = obterUbsPorMunicipio($uf, $municipio, $codigoMunicipio);
+        if (isset($itens['erro'])) {
+            responderJson([
+                'erro' => 'Falha ao buscar UBS.',
+                'debug' => $itens,
+            ], 502);
+        }
+
+        responderJson([
+            'erro' => '',
+            'uf' => $uf,
+            'cidade' => $municipio,
+            'codigo_municipio' => $codigoMunicipio,
+            'total' => count($itens),
+            'itens' => $itens,
+        ]);
+
+    case 'arboviroses':
+        $doencaNormalizada = normalizarDoencaSolicitada($doenca);
+        if ($doencaNormalizada === '') {
+            responderJson(['erro' => 'Doença inválida.'], 400);
+        }
+
+        $itens = obterArbovirosesPorMunicipio($uf, $municipio, $doencaNormalizada, $codigoMunicipio);
+        if (isset($itens['erro'])) {
+            responderJson([
+                'erro' => 'Falha ao buscar dados de arboviroses.',
+                'debug' => $itens,
+            ], 502);
+        }
+
+        responderJson([
+            'erro' => '',
+            'uf' => $uf,
+            'cidade' => $municipio,
+            'codigo_municipio' => $codigoMunicipio,
+            'doenca' => $doencaNormalizada,
+            'total' => count($itens),
+            'itens' => $itens,
+        ]);
+
+    case 'mais-medicos':
+        $itens = obterMaisMedicosPorMunicipio($uf, $municipio, $codigoMunicipio);
+        if (isset($itens['erro'])) {
+            responderJson([
+                'erro' => 'Falha ao buscar dados do Mais Médicos.',
+                'debug' => $itens,
+            ], 502);
+        }
+
+        responderJson([
+            'erro' => '',
+            'uf' => $uf,
+            'cidade' => $municipio,
+            'codigo_municipio' => $codigoMunicipio,
+            'total' => count($itens),
+            'itens' => $itens,
+        ]);
 }

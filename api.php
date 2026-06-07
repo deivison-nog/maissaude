@@ -1,5 +1,6 @@
 <?php
 
+const API_SAUDE_BASE_URL = 'https://apidadosabertos.saude.gov.br';
 const MAX_MUNICIPIOS_POR_UF = 860;
 
 function chamarApi(string $url): array
@@ -174,6 +175,23 @@ function extrairValorAninhado(array $item, array $caminho): string
     return normalizarTexto((string) $valor);
 }
 
+function extrairPrimeiroValor(array $item, array $campos = [], array $caminhos = []): string
+{
+    $valor = $campos !== [] ? extrairValor($item, $campos) : '';
+    if ($valor !== '') {
+        return $valor;
+    }
+
+    foreach ($caminhos as $caminho) {
+        $valor = extrairValorAninhado($item, $caminho);
+        if ($valor !== '') {
+            return $valor;
+        }
+    }
+
+    return '';
+}
+
 function ehListaDeObjetos(array $valor): bool
 {
     if ($valor === []) {
@@ -214,6 +232,59 @@ function encontrarListaDeObjetos(array $dados): array
     }
 
     return [];
+}
+
+function construirUrlApiSaude(string $caminho, array $parametros = []): string
+{
+    $url = rtrim(API_SAUDE_BASE_URL, '/') . '/' . ltrim($caminho, '/');
+    $parametrosFiltrados = [];
+
+    foreach ($parametros as $chave => $valor) {
+        if ($valor === null) {
+            continue;
+        }
+
+        if (is_string($valor)) {
+            $valor = trim($valor);
+        }
+
+        if ($valor === '') {
+            continue;
+        }
+
+        $parametrosFiltrados[$chave] = $valor;
+    }
+
+    if ($parametrosFiltrados === []) {
+        return $url;
+    }
+
+    return $url . '?' . http_build_query($parametrosFiltrados);
+}
+
+function obterListaApiSaude(string $caminho, array $parametros = []): array
+{
+    $url = construirUrlApiSaude($caminho, $parametros);
+    $dados = chamarApi($url);
+
+    if (isset($dados['erro'])) {
+        return $dados;
+    }
+
+    $lista = encontrarListaDeObjetos($dados);
+    if ($lista !== []) {
+        return $lista;
+    }
+
+    if ($dados !== [] && !array_is_list($dados)) {
+        return [$dados];
+    }
+
+    return [
+        'erro' => 'Estrutura JSON não reconhecida',
+        'url' => $url,
+        'json_bruto' => $dados
+    ];
 }
 
 function obterListaMunicipiosIbge(string $uf): array
@@ -260,7 +331,11 @@ function obterListaMunicipiosPorUf(string $uf): array
         return ['erro' => 'UF não informada'];
     }
 
-    $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=' . MAX_MUNICIPIOS_POR_UF . '&offset=0';
+    $url = construirUrlApiSaude('/macrorregiao-e-regiao-de-saude/municipio', [
+        'sigla_uf' => $uf,
+        'limit' => MAX_MUNICIPIOS_POR_UF,
+        'offset' => 0,
+    ]);
     $dados = chamarApi($url);
     $erroApiSaude = null;
 
@@ -397,4 +472,263 @@ function obterEstadosECidades(string $uf = ''): array
         'cidadesPorEstado' => $cidadesPorEstado,
         'registros' => $registros
     ];
+}
+
+function obterRegistroMunicipio(array $registros, string $uf, string $cidade): ?array
+{
+    $cidadeNormalizada = mb_strtolower(limparNomeMunicipio($cidade));
+
+    foreach ($registros as $registro) {
+        if (!isset($registro['uf'], $registro['municipio'])) {
+            continue;
+        }
+
+        if ($registro['uf'] !== $uf) {
+            continue;
+        }
+
+        if (mb_strtolower(limparNomeMunicipio((string) $registro['municipio'])) !== $cidadeNormalizada) {
+            continue;
+        }
+
+        return $registro;
+    }
+
+    return null;
+}
+
+function montarEnderecoServicoSaude(array $item): string
+{
+    $logradouro = extrairPrimeiroValor($item, [
+        'endereco', 'logradouro', 'nome_logradouro', 'logradouro_estabelecimento', 'endereco_estabelecimento'
+    ], [
+        ['endereco', 'logradouro'],
+        ['endereco', 'nome_logradouro'],
+        ['localizacao', 'endereco']
+    ]);
+    $numero = extrairPrimeiroValor($item, ['numero', 'numero_endereco', 'numero_estabelecimento'], [['endereco', 'numero']]);
+    $complemento = extrairPrimeiroValor($item, ['complemento', 'complemento_endereco'], [['endereco', 'complemento']]);
+    $bairro = extrairPrimeiroValor($item, ['bairro'], [['endereco', 'bairro']]);
+    $municipio = extrairPrimeiroValor($item, ['municipio', 'nome_municipio', 'cidade'], [['endereco', 'municipio']]);
+    $uf = extrairPrimeiroValor($item, ['uf', 'sigla_uf'], [['endereco', 'uf']]);
+    $cep = extrairPrimeiroValor($item, ['cep'], [['endereco', 'cep']]);
+
+    $partes = [];
+    $linhaLogradouro = implode(', ', array_filter([$logradouro, $numero, $complemento], static fn(string $valor): bool => $valor !== ''));
+    $linhaLocalidade = implode(' - ', array_filter([
+        $bairro,
+        implode('/', array_filter([$municipio, $uf], static fn(string $valor): bool => $valor !== ''))
+    ], static fn(string $valor): bool => $valor !== ''));
+
+    if ($linhaLogradouro !== '') {
+        $partes[] = $linhaLogradouro;
+    }
+
+    if ($linhaLocalidade !== '') {
+        $partes[] = $linhaLocalidade;
+    }
+
+    if ($cep !== '') {
+        $partes[] = 'CEP ' . $cep;
+    }
+
+    return implode(' | ', $partes);
+}
+
+function resumirItemGenerico(array $item): string
+{
+    $pares = [];
+
+    foreach ($item as $chave => $valor) {
+        if (is_array($valor) || $valor === null || $valor === '') {
+            continue;
+        }
+
+        $pares[] = sprintf('%s: %s', (string) $chave, normalizarTexto((string) $valor));
+        if (count($pares) >= 4) {
+            break;
+        }
+    }
+
+    return implode(' | ', $pares);
+}
+
+function normalizarListaServicosSaude(array $lista, string $tipoPadrao = ''): array
+{
+    $itens = [];
+
+    foreach ($lista as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $nome = extrairPrimeiroValor($item, [
+            'nome_fantasia', 'nomeFantasia', 'nome_estabelecimento', 'estabelecimento',
+            'razao_social', 'razaoSocial', 'nome'
+        ]);
+        $tipo = extrairPrimeiroValor($item, [
+            'tipo_unidade', 'tipoUnidade', 'descricao_subtipo_unidade', 'subtipo_unidade',
+            'categoria', 'natureza_organizacao', 'tipo'
+        ]);
+        $telefone = extrairPrimeiroValor($item, [
+            'telefone', 'telefone1', 'telefone_1', 'numero_telefone', 'contato', 'telefone_estabelecimento'
+        ], [
+            ['contato', 'telefone'],
+            ['endereco', 'telefone']
+        ]);
+        $codigo = extrairPrimeiroValor($item, ['cnes', 'codigo_cnes', 'codigo', 'id']);
+        $leitos = extrairPrimeiroValor($item, ['leitos', 'qtd_leitos', 'qt_leitos', 'quantidade_leitos', 'total_leitos']);
+        $endereco = montarEnderecoServicoSaude($item);
+
+        $registro = array_filter([
+            'nome' => $nome,
+            'tipo' => $tipo !== '' ? $tipo : $tipoPadrao,
+            'endereco' => $endereco,
+            'telefone' => $telefone,
+            'codigo' => $codigo,
+            'leitos' => $leitos,
+            'descricao' => resumirItemGenerico($item),
+        ], static fn(string $valor): bool => $valor !== '');
+
+        if (!isset($registro['nome']) && isset($registro['descricao'])) {
+            $registro['nome'] = $registro['descricao'];
+        }
+
+        if ($registro !== []) {
+            $itens[] = $registro;
+        }
+    }
+
+    return $itens;
+}
+
+function normalizarListaArboviroses(array $lista, string $doenca): array
+{
+    $itens = [];
+
+    foreach ($lista as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $municipio = extrairPrimeiroValor($item, ['municipio', 'cidade', 'nome_municipio']);
+        $uf = extrairPrimeiroValor($item, ['uf', 'sigla_uf']);
+        $periodo = extrairPrimeiroValor($item, ['ano', 'periodo', 'competencia', 'semana_epidemiologica', 'data_notificacao']);
+        $casos = extrairPrimeiroValor($item, ['casos', 'quantidade', 'notificacoes', 'numero_casos', 'total']);
+        $classificacao = extrairPrimeiroValor($item, ['classificacao', 'situacao', 'status']);
+
+        $titulo = implode(' - ', array_filter([
+            ucfirst($doenca),
+            implode('/', array_filter([$municipio, $uf], static fn(string $valor): bool => $valor !== ''))
+        ], static fn(string $valor): bool => $valor !== ''));
+
+        $registro = array_filter([
+            'titulo' => $titulo !== '' ? $titulo : ucfirst($doenca),
+            'periodo' => $periodo,
+            'casos' => $casos,
+            'observacao' => $classificacao !== '' ? $classificacao : resumirItemGenerico($item),
+        ], static fn(string $valor): bool => $valor !== '');
+
+        if ($registro !== []) {
+            $itens[] = $registro;
+        }
+    }
+
+    return $itens;
+}
+
+function normalizarListaMaisMedicos(array $lista): array
+{
+    $itens = [];
+
+    foreach ($lista as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $registro = array_filter([
+            'nome' => extrairPrimeiroValor($item, ['nome_profissional', 'profissional', 'nome']),
+            'tipo' => extrairPrimeiroValor($item, ['ocupacao', 'cargo', 'funcao']),
+            'endereco' => extrairPrimeiroValor($item, ['unidade', 'estabelecimento', 'nome_unidade']),
+            'descricao' => resumirItemGenerico($item),
+        ], static fn(string $valor): bool => $valor !== '');
+
+        if (!isset($registro['nome']) && isset($registro['descricao'])) {
+            $registro['nome'] = $registro['descricao'];
+        }
+
+        if ($registro !== []) {
+            $itens[] = $registro;
+        }
+    }
+
+    return $itens;
+}
+
+function obterEstabelecimentosPorMunicipio(string $codigoMunicipio, string $uf = '', string $cidade = ''): array
+{
+    $lista = obterListaApiSaude('/cnes/estabelecimentos', [
+        'codigo_municipio' => $codigoMunicipio,
+        'uf' => $uf,
+        'municipio' => $cidade,
+    ]);
+
+    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Estabelecimento de saúde');
+}
+
+function obterHospitaisPorMunicipio(string $uf, string $cidade, string $codigoMunicipio = ''): array
+{
+    $lista = obterListaApiSaude('/assistencia-a-saude/hospitais-e-leitos', [
+        'uf' => $uf,
+        'municipio' => $cidade,
+        'codigo_municipio' => $codigoMunicipio,
+    ]);
+
+    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Hospital');
+}
+
+function obterUbsPorMunicipio(string $uf, string $cidade, string $codigoMunicipio = ''): array
+{
+    $lista = obterListaApiSaude('/assistencia-a-saude/unidade-basicas-de-saude', [
+        'uf' => $uf,
+        'municipio' => $cidade,
+        'codigo_municipio' => $codigoMunicipio,
+    ]);
+
+    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'UBS');
+}
+
+function obterArbovirosesPorMunicipio(string $uf, string $cidade, string $doenca, string $codigoMunicipio = ''): array
+{
+    $mapa = [
+        'dengue' => '/arboviroses/dengue',
+        'zikavirus' => '/arboviroses/zikavirus',
+        'zika' => '/arboviroses/zikavirus',
+        'chikungunya' => '/arboviroses/chikungunya',
+    ];
+    $doencaNormalizada = strtolower(trim($doenca));
+    $caminho = $mapa[$doencaNormalizada] ?? null;
+
+    if ($caminho === null) {
+        return ['erro' => 'Doença inválida.'];
+    }
+
+    $lista = obterListaApiSaude($caminho, [
+        'uf' => $uf,
+        'municipio' => $cidade,
+        'codigo_municipio' => $codigoMunicipio,
+    ]);
+
+    return isset($lista['erro']) ? $lista : normalizarListaArboviroses($lista, $doencaNormalizada === 'zika' ? 'zikavirus' : $doencaNormalizada);
+}
+
+function obterMaisMedicosPorMunicipio(string $uf, string $cidade, string $codigoMunicipio = ''): array
+{
+    $lista = obterListaApiSaude('/atencao-primaria/pmmb-profissionais-ativos', [
+        'uf' => $uf,
+        'municipio' => $cidade,
+        'codigo_municipio' => $codigoMunicipio,
+    ]);
+
+    return isset($lista['erro']) ? $lista : normalizarListaMaisMedicos($lista);
 }
