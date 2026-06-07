@@ -56,23 +56,48 @@ function extrairValor(array $item, array $campos): string
     return '';
 }
 
-function obterEstadosECidades(): array
+function obterDadosBrutosMunicipios(): array
 {
     $urls = [
         'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio',
         'https://apidadosabertos.saude.gov.br/v1/macrorregiao-e-regiao-de-saude/municipio'
     ];
 
-    $dados = ['erro' => 'Não foi possível consultar a API'];
+    $ultimoErro = 'Não foi possível consultar a API';
 
     foreach ($urls as $url) {
         $tentativa = chamarApi($url);
+
         if (!isset($tentativa['erro'])) {
-            $dados = $tentativa;
-            break;
+            return $tentativa;
         }
-        $dados = $tentativa;
+
+        $ultimoErro = $tentativa['erro'];
     }
+
+    return ['erro' => $ultimoErro];
+}
+
+function normalizarListaRegistros(array $dados): array
+{
+    $lista = [];
+
+    if (isset($dados[0]) && is_array($dados[0])) {
+        $lista = $dados;
+    } elseif (isset($dados['data']) && is_array($dados['data'])) {
+        $lista = $dados['data'];
+    } elseif (isset($dados['items']) && is_array($dados['items'])) {
+        $lista = $dados['items'];
+    } elseif (isset($dados['result']) && is_array($dados['result'])) {
+        $lista = $dados['result'];
+    }
+
+    return array_values(array_filter($lista, 'is_array'));
+}
+
+function obterEstadosECidades(): array
+{
+    $dados = obterDadosBrutosMunicipios();
 
     $estados = [];
     $cidadesPorEstado = [];
@@ -83,15 +108,14 @@ function obterEstadosECidades(): array
             'erro' => $dados['erro'],
             'estados' => [],
             'cidadesPorEstado' => [],
-            'registros' => []
+            'registros' => [],
+            'total_bruto' => 0
         ];
     }
 
-    foreach ($dados as $item) {
-        if (!is_array($item)) {
-            continue;
-        }
+    $lista = normalizarListaRegistros($dados);
 
+    foreach ($lista as $item) {
         $uf = extrairValor($item, ['uf', 'sigla_uf', 'estado']);
         $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'cidade']);
         $regiao = extrairValor($item, ['regiao_saude', 'nome_regiao_saude', 'regiao']);
@@ -132,6 +156,7 @@ function obterEstadosECidades(): array
     return [
         'estados' => array_values($estados),
         'cidadesPorEstado' => $cidadesPorEstado,
-        'registros' => $registros
+        'registros' => $registros,
+        'total_bruto' => count($lista)
     ];
 }
