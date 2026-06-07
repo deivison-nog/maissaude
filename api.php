@@ -236,6 +236,22 @@ function obterListaMunicipiosIbge(string $uf): array
     return array_values($dados);
 }
 
+function listaContemMunicipiosUtilizaveis(array $lista): bool
+{
+    foreach ($lista as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'nomeMunicipio', 'municipio_nome', 'cidade', 'nome']);
+        if ($municipio !== '') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function obterListaMunicipiosPorUf(string $uf): array
 {
     $uf = strtoupper(trim($uf));
@@ -253,9 +269,14 @@ function obterListaMunicipiosPorUf(string $uf): array
     } else {
         $lista = encontrarListaDeObjetos($dados);
 
-        if ($lista !== []) {
+        if ($lista !== [] && listaContemMunicipiosUtilizaveis($lista)) {
             return $lista;
         }
+
+        $erroApiSaude = [
+            'erro' => 'Estrutura da lista sem municípios utilizáveis',
+            'url' => $url
+        ];
     }
 
     $fallback = obterListaMunicipiosIbge($uf);
