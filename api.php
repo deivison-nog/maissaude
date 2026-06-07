@@ -948,6 +948,9 @@ function lerEstabelecimentosJsonLocal(string $cidade): array
 
 function itemPareceHospital(array $item): bool
 {
+    // 5=Hospital Geral, 7=Hospital Especializado, 15=Unidade Mista, 20=Pronto-socorro Geral,
+    // 21=Pronto-socorro Especializado, 22=Pronto-socorro Trauma/Ortopedia, 61=Centro de Parto Normal,
+    // 62=Hospital/Dia, 73=Pronto Atendimento
     $codigosHospital = [5, 7, 15, 20, 21, 22, 61, 62, 73];
     if (isset($item['codigo_tipo_unidade']) && in_array((int) $item['codigo_tipo_unidade'], $codigosHospital, true)) {
         return true;
