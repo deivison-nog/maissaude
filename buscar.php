@@ -1,5 +1,8 @@
 <?php
 
+ini_set('display_errors', '0');
+set_time_limit(120);
+
 require_once __DIR__ . '/api.php';
 
 header('Content-Type: application/json; charset=UTF-8');
