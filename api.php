@@ -270,19 +270,3 @@ function obterEstadosECidades(string $uf = ''): array
         'registros' => $registros
     ];
 }
-
-if (
-    PHP_SAPI !== 'cli'
-    && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)
-) {
-    header('Content-Type: application/json; charset=UTF-8');
-
-    $uf = strtoupper(trim((string) ($_GET['uf'] ?? '')));
-    $dados = obterEstadosECidades($uf);
-
-    if ($dados['erro'] !== '') {
-        http_response_code(502);
-    }
-
-    echo json_encode($dados, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-}

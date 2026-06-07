@@ -6,7 +6,7 @@ Projeto PHP simples para fluxo **Estado → Cidade → Resultado** usando a API 
 
 - `index.php`: página principal com seleção de estado/cidade.
 - `buscar.php`: endpoint JSON para cidades e resultado por município.
-- `api.php`: biblioteca de integração com a API externa e endpoint JSON direto.
+- `api.php`: biblioteca de integração com a API externa.
 
 ## Executar localmente
 
@@ -28,4 +28,3 @@ http://localhost:8000/index.php
 - `GET /buscar.php?action=estados`
 - `GET /buscar.php?action=cidades&uf=SP`
 - `GET /buscar.php?action=resultado&uf=SP&cidade=São%20Paulo`
-- `GET /api.php?uf=SP` (retorna estrutura completa para a UF)

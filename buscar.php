@@ -12,6 +12,15 @@ function normalizarMunicipioParaComparacao(string $municipio): string
 $action = trim((string) ($_GET['action'] ?? 'estados'));
 $uf = strtoupper(trim((string) ($_GET['uf'] ?? '')));
 $cidade = trim((string) ($_GET['cidade'] ?? ''));
+$acoesPermitidas = ['estados', 'cidades', 'resultado'];
+
+if (!in_array($action, $acoesPermitidas, true)) {
+    http_response_code(400);
+    echo json_encode([
+        'erro' => 'Ação inválida.',
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
 
 if ($action === 'estados') {
     echo json_encode([
@@ -59,18 +68,18 @@ if ($action === 'resultado') {
     }
 
     $cidadeNormalizada = normalizarMunicipioParaComparacao($cidade);
-    $registroEncontrado = null;
+    $registrosIndexados = [];
 
     foreach ($dados['registros'] as $registro) {
-        if ($registro['uf'] !== $uf) {
+        if (!isset($registro['uf'], $registro['municipio'])) {
             continue;
         }
 
-        if (normalizarMunicipioParaComparacao($registro['municipio']) === $cidadeNormalizada) {
-            $registroEncontrado = $registro;
-            break;
-        }
+        $chave = $registro['uf'] . '|' . normalizarMunicipioParaComparacao($registro['municipio']);
+        $registrosIndexados[$chave] = $registro;
     }
+
+    $registroEncontrado = $registrosIndexados[$uf . '|' . $cidadeNormalizada] ?? null;
 
     if ($registroEncontrado === null) {
         http_response_code(404);
@@ -88,8 +97,3 @@ if ($action === 'resultado') {
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
-
-http_response_code(400);
-echo json_encode([
-    'erro' => 'Ação inválida.',
-], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
