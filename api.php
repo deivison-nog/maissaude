@@ -559,6 +559,53 @@ function listaContemMunicipiosUtilizaveis(array $lista): bool
     return false;
 }
 
+function obterListaMunicipiosFallbackLocal(string $uf): array
+{
+    $uf = strtoupper(trim($uf));
+
+    $municipiosPorUf = [
+        'PA' => [
+            'Abaetetuba', 'Abel Figueiredo', 'Acará', 'Afuá', 'Água Azul do Norte', 'Alenquer', 'Almeirim',
+            'Altamira', 'Anajás', 'Ananindeua', 'Anapu', 'Augusto Corrêa', 'Aurora do Pará', 'Aveiro', 'Bagre',
+            'Baião', 'Bannach', 'Barcarena', 'Belém', 'Belterra', 'Benevides', 'Bom Jesus do Tocantins',
+            'Bonito', 'Bragança', 'Brasil Novo', 'Brejo Grande do Araguaia', 'Breu Branco', 'Breves', 'Bujaru',
+            'Cachoeira do Arari', 'Cachoeira do Piriá', 'Cametá', 'Canaã dos Carajás', 'Capanema',
+            'Capitão Poço', 'Castanhal', 'Chaves', 'Colares', 'Conceição do Araguaia', 'Concórdia do Pará',
+            'Cumaru do Norte', 'Curionópolis', 'Curralinho', 'Curuá', 'Curuçá', 'Dom Eliseu',
+            'Eldorado dos Carajás', 'Faro', 'Floresta do Araguaia', 'Garrafão do Norte', 'Goianésia do Pará',
+            'Gurupá', 'Igarapé-Açu', 'Igarapé-Miri', 'Inhangapi', 'Ipixuna do Pará', 'Irituia', 'Itaituba',
+            'Itupiranga', 'Jacareacanga', 'Jacundá', 'Juruti', 'Limoeiro do Ajuru', 'Mãe do Rio',
+            'Magalhães Barata', 'Marabá', 'Maracanã', 'Marapanim', 'Marituba', 'Medicilândia', 'Melgaço',
+            'Mocajuba', 'Moju', 'Mojuí dos Campos', 'Monte Alegre', 'Muaná', 'Nova Esperança do Piriá',
+            'Nova Ipixuna', 'Nova Timboteua', 'Novo Progresso', 'Novo Repartimento', 'Óbidos', 'Oeiras do Pará',
+            'Oriximiná', 'Ourém', 'Ourilândia do Norte', 'Pacajá', 'Palestina do Pará', 'Paragominas',
+            'Parauapebas', "Pau D’Arco", 'Peixe-Boi', 'Piçarra', 'Placas', 'Ponta de Pedras', 'Portel',
+            'Porto de Moz', 'Prainha', 'Primavera', 'Quatipuru', 'Redenção', 'Rio Maria', 'Rondon do Pará',
+            'Rurópolis', 'Salinópolis', 'Salvaterra', 'Santa Bárbara do Pará', 'Santa Cruz do Arari',
+            'Santa Izabel do Pará', 'Santa Luzia do Pará', 'Santa Maria das Barreiras', 'Santa Maria do Pará',
+            'Santana do Araguaia', 'Santarém', 'Santarém Novo', 'Santo Antônio do Tauá',
+            'São Caetano de Odivelas', 'São Domingos do Araguaia', 'São Domingos do Capim',
+            'São Félix do Xingu', 'São Francisco do Pará', 'São Geraldo do Araguaia', 'São João da Ponta',
+            'São João de Pirabas', 'São João do Araguaia', 'São Miguel do Guamá',
+            'São Sebastião da Boa Vista', 'Sapucaia', 'Senador José Porfírio', 'Soure', 'Tailândia',
+            'Terra Alta', 'Terra Santa', 'Tomé-Açu', 'Tracuateua', 'Trairão', 'Tucumã', 'Tucuruí',
+            'Ulianópolis', 'Uruará', 'Vigia', 'Viseu', 'Vitória do Xingu', 'Xinguara',
+        ],
+    ];
+
+    if (!isset($municipiosPorUf[$uf])) {
+        return ['erro' => 'Fallback local não disponível para a UF informada'];
+    }
+
+    return array_map(
+        static fn(string $municipio): array => [
+            'sigla_uf' => $uf,
+            'municipio' => $municipio,
+        ],
+        $municipiosPorUf[$uf]
+    );
+}
+
 function obterListaMunicipiosPorUf(string $uf): array
 {
     $uf = strtoupper(trim($uf));
@@ -592,15 +639,22 @@ function obterListaMunicipiosPorUf(string $uf): array
 
     $fallback = obterListaMunicipiosIbge($uf);
 
-    if (isset($fallback['erro'])) {
-        return [
-            'erro' => 'Falha ao buscar municípios nas APIs disponíveis',
-            'api_saude' => $erroApiSaude ?? ['erro' => 'Estrutura JSON não reconhecida', 'url' => sanitizarUrlParaDebug($url)],
-            'api_ibge' => $fallback
-        ];
+    if (!isset($fallback['erro'])) {
+        return $fallback;
     }
 
-    return $fallback;
+    $fallbackLocal = obterListaMunicipiosFallbackLocal($uf);
+
+    if (!isset($fallbackLocal['erro'])) {
+        return $fallbackLocal;
+    }
+
+    return [
+        'erro' => 'Falha ao buscar municípios nas APIs disponíveis',
+        'api_saude' => $erroApiSaude ?? ['erro' => 'Estrutura JSON não reconhecida', 'url' => sanitizarUrlParaDebug($url)],
+        'api_ibge' => $fallback,
+        'api_local' => $fallbackLocal,
+    ];
 }
 
 function obterEstadosFixos(): array
