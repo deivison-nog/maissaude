@@ -18,6 +18,10 @@ const CNES_ESTABELECIMENTOS_MAX_TOTAL = 2000;
 if (!function_exists('array_is_list')) {
     function array_is_list(array $array): bool
     {
+        if ($array === []) {
+            return true;
+        }
+
         $indiceEsperado = 0;
 
         foreach ($array as $chave => $_valor) {
