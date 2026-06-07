@@ -9,6 +9,12 @@ const MAX_MUNICIPIOS_POR_UF = 860;
 /** Quantidade máxima de pares chave/valor incluídos em resumos genéricos. */
 const RESUMO_ITEM_LIMITE_CAMPOS = 8;
 
+/** Itens por página ao paginar o endpoint CNES de estabelecimentos. */
+const CNES_ESTABELECIMENTOS_POR_PAGINA = 50;
+
+/** Total máximo de estabelecimentos buscados por município (evita excesso de chamadas). */
+const CNES_ESTABELECIMENTOS_MAX_TOTAL = 2000;
+
 function sanitizarUrlParaDebug(string $url): string
 {
     $partes = parse_url($url);
@@ -337,6 +343,10 @@ function ehListaDeObjetos(array $valor): bool
         return false;
     }
 
+    if (!array_is_list($valor)) {
+        return false;
+    }
+
     $primeiro = reset($valor);
     return is_array($primeiro);
 }
@@ -347,7 +357,7 @@ function encontrarListaDeObjetos(array $dados): array
         return array_values($dados);
     }
 
-    $chavesPreferidas = ['data', 'items', 'result', 'results', 'records', 'rows'];
+    $chavesPreferidas = ['data', 'items', 'result', 'results', 'records', 'rows', 'estabelecimentos'];
 
     foreach ($chavesPreferidas as $chave) {
         if (isset($dados[$chave]) && is_array($dados[$chave]) && ehListaDeObjetos($dados[$chave])) {
@@ -979,21 +989,85 @@ function itemPareceHospital(array $item): bool
     return false;
 }
 
+/**
+ * Busca uma página do endpoint CNES de estabelecimentos e retorna o total real
+ * informado pela API junto com os itens da página.
+ *
+ * Retorna ['total' => int|null, 'itens' => array] em caso de sucesso,
+ * ou ['erro' => string, ...] em caso de falha.
+ */
+function buscarPaginaEstabelecimentos(array $parametros): array
+{
+    $url = construirUrlApiSaude('/cnes/estabelecimentos', $parametros);
+    $dados = chamarApi($url);
+
+    if (isset($dados['erro'])) {
+        return $dados;
+    }
+
+    $mensagemErro = extrairMensagemErroApi($dados);
+    if ($mensagemErro !== '') {
+        return [
+            'erro' => $mensagemErro,
+            'url' => sanitizarUrlParaDebug($url),
+            'json_bruto' => $dados,
+        ];
+    }
+
+    $total = isset($dados['total']) && is_numeric($dados['total']) ? (int) $dados['total'] : null;
+    $itens = encontrarListaDeObjetos($dados);
+
+    return ['total' => $total, 'itens' => $itens];
+}
+
 function obterEstabelecimentosPorMunicipio(string $codigoMunicipio, string $uf = '', string $cidade = ''): array
 {
-    $lista = obterListaApiSaude('/cnes/estabelecimentos', [
+    $parametrosBase = [
         'codigo_uf' => obterCodigoUf($uf),
         'codigo_municipio' => normalizarCodigoMunicipio($codigoMunicipio),
         'status' => 1,
-        'limit' => 20,
-        'offset' => 0,
-    ]);
+    ];
 
-    if (isset($lista['erro']) && $cidade !== '') {
+    $todos = [];
+    $offset = 0;
+    $totalApi = null;
+    $erroApi = null;
+
+    do {
+        $pagina = buscarPaginaEstabelecimentos(array_merge($parametrosBase, [
+            'limit' => CNES_ESTABELECIMENTOS_POR_PAGINA,
+            'offset' => $offset,
+        ]));
+
+        if (isset($pagina['erro'])) {
+            $erroApi = $pagina;
+            break;
+        }
+
+        if ($totalApi === null) {
+            $totalApi = $pagina['total'];
+        }
+
+        $todos = array_merge($todos, $pagina['itens']);
+        $offset += CNES_ESTABELECIMENTOS_POR_PAGINA;
+
+    } while (
+        count($pagina['itens']) === CNES_ESTABELECIMENTOS_POR_PAGINA
+        && count($todos) < CNES_ESTABELECIMENTOS_MAX_TOTAL
+        && ($totalApi === null || count($todos) < $totalApi)
+    );
+
+    if ($todos === [] && $erroApi !== null && $cidade !== '') {
         $lista = lerEstabelecimentosJsonLocal($cidade);
+        if (isset($lista['erro'])) {
+            return $lista;
+        }
+        $todos = $lista;
+    } elseif ($todos === [] && $erroApi !== null) {
+        return $erroApi;
     }
 
-    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Estabelecimento de saúde', [
+    return normalizarListaServicosSaude($todos, 'Estabelecimento de saúde', [
         'uf' => $uf,
         'cidade' => $cidade,
     ]);
