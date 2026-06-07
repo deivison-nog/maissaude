@@ -4,6 +4,11 @@ require_once __DIR__ . '/api.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
+function normalizarMunicipioParaComparacao(string $municipio): string
+{
+    return mb_strtolower(limparNomeMunicipio($municipio));
+}
+
 $action = trim((string) ($_GET['action'] ?? 'estados'));
 $uf = strtoupper(trim((string) ($_GET['uf'] ?? '')));
 $cidade = trim((string) ($_GET['cidade'] ?? ''));
@@ -53,7 +58,7 @@ if ($action === 'resultado') {
         exit;
     }
 
-    $cidadeNormalizada = mb_strtolower(limparNomeMunicipio($cidade));
+    $cidadeNormalizada = normalizarMunicipioParaComparacao($cidade);
     $registroEncontrado = null;
 
     foreach ($dados['registros'] as $registro) {
@@ -61,7 +66,7 @@ if ($action === 'resultado') {
             continue;
         }
 
-        if (mb_strtolower($registro['municipio']) === $cidadeNormalizada) {
+        if (normalizarMunicipioParaComparacao($registro['municipio']) === $cidadeNormalizada) {
             $registroEncontrado = $registro;
             break;
         }

@@ -273,7 +273,7 @@ function obterEstadosECidades(string $uf = ''): array
 
 if (
     PHP_SAPI !== 'cli'
-    && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__
+    && realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === realpath(__FILE__)
 ) {
     header('Content-Type: application/json; charset=UTF-8');
 
