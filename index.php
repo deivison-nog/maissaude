@@ -93,6 +93,7 @@ const statusEpidemiologiaEl = document.getElementById('status-epidemiologia');
 const blocoEpidemiologiaEl = document.getElementById('bloco-epidemiologia');
 const resumoMaisMedicosEl = document.getElementById('resumo-mais-medicos');
 const PREVIEW_ITEMS_LIMIT = 5;
+const paramsIniciais = new URLSearchParams(window.location.search);
 
 function escapeHtml(value) {
     return String(value)
@@ -125,6 +126,24 @@ function resetResultado(msg = 'Nenhum resultado ainda.') {
     erroEl.textContent = '';
     limparPaineis();
     resultadoEl.textContent = msg;
+}
+
+function atualizarUrlConsulta(uf = '', cidade = '') {
+    const url = new URL(window.location.href);
+
+    if (uf) {
+        url.searchParams.set('uf', uf);
+    } else {
+        url.searchParams.delete('uf');
+    }
+
+    if (cidade) {
+        url.searchParams.set('cidade', cidade);
+    } else {
+        url.searchParams.delete('cidade');
+    }
+
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
 }
 
 function montarListaHtml(itens, formatter, emptyMessage) {
@@ -247,8 +266,7 @@ async function carregarBlocosComplementares(uf, cidade) {
     }
 }
 
-ufSelect.addEventListener('change', async () => {
-    const uf = ufSelect.value;
+async function carregarCidades(uf, cidadeSelecionada = '') {
     resetCidadeSelect('Selecione...');
     cidadeSelect.disabled = true;
     btnConsultar.disabled = true;
@@ -256,9 +274,11 @@ ufSelect.addEventListener('change', async () => {
 
     if (!uf) {
         statusEl.textContent = 'Selecione um estado para carregar as cidades.';
+        atualizarUrlConsulta();
         return;
     }
 
+    atualizarUrlConsulta(uf);
     statusEl.textContent = 'Carregando cidades...';
 
     try {
@@ -277,22 +297,23 @@ ufSelect.addEventListener('change', async () => {
         });
 
         cidadeSelect.disabled = false;
-        btnConsultar.disabled = false;
+        if (cidadeSelecionada && data.cidades.includes(cidadeSelecionada)) {
+            cidadeSelect.value = cidadeSelecionada;
+            btnConsultar.disabled = false;
+            atualizarUrlConsulta(uf, cidadeSelecionada);
+        }
         statusEl.textContent = `${data.cidades.length} cidades carregadas.`;
     } catch (error) {
         erroEl.textContent = error.message;
         statusEl.textContent = '';
     }
-});
+}
 
-document.getElementById('consulta-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
+async function consultarResultado(uf, cidade) {
+    atualizarUrlConsulta(uf, cidade);
     erroEl.textContent = '';
     statusEl.textContent = 'Buscando resultado...';
     resetResultado('Aguarde...');
-
-    const uf = ufSelect.value;
-    const cidade = cidadeSelect.value;
 
     try {
         const data = await buscarJson(
@@ -311,7 +332,42 @@ document.getElementById('consulta-form').addEventListener('submit', async (event
         limparPaineis();
         resultadoEl.textContent = 'Nenhum resultado disponível.';
     }
+}
+
+ufSelect.addEventListener('change', async () => {
+    await carregarCidades(ufSelect.value);
 });
+
+cidadeSelect.addEventListener('change', () => {
+    btnConsultar.disabled = cidadeSelect.value === '';
+    atualizarUrlConsulta(ufSelect.value, cidadeSelect.value);
+});
+
+document.getElementById('consulta-form').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    await consultarResultado(ufSelect.value, cidadeSelect.value);
+});
+
+(async () => {
+    const ufInicial = (paramsIniciais.get('uf') || '').toUpperCase();
+    const cidadeInicial = paramsIniciais.get('cidade') || '';
+
+    if (!ufInicial) {
+        return;
+    }
+
+    if (![...ufSelect.options].some((option) => option.value === ufInicial)) {
+        atualizarUrlConsulta();
+        return;
+    }
+
+    ufSelect.value = ufInicial;
+    await carregarCidades(ufInicial, cidadeInicial);
+
+    if (cidadeInicial && cidadeSelect.value === cidadeInicial) {
+        await consultarResultado(ufInicial, cidadeInicial);
+    }
+})();
 </script>
 </body>
 </html>

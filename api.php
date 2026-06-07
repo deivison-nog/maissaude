@@ -704,6 +704,56 @@ function normalizarListaServicosSaude(array $lista, string $tipoPadrao = ''): ar
     return $itens;
 }
 
+function textoPareceUbs(string $texto): bool
+{
+    $texto = mb_strtoupper(normalizarTexto(removerAcentos($texto)));
+
+    if ($texto === '') {
+        return false;
+    }
+
+    if (preg_match('/\b(UBS|USF|ESF)\b/u', $texto) === 1) {
+        return true;
+    }
+
+    foreach ([
+        'UNIDADE BASICA DE SAUDE',
+        'UNIDADE DE SAUDE DA FAMILIA',
+        'ESTRATEGIA SAUDE DA FAMILIA',
+        'POSTO DE SAUDE',
+        'CENTRO DE SAUDE',
+    ] as $termo) {
+        if (str_contains($texto, $termo)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function itemPareceUbs(array $item): bool
+{
+    $textos = [
+        extrairPrimeiroValor($item, [
+            'tipo_unidade', 'tipoUnidade', 'descricao_subtipo_unidade', 'subtipo_unidade',
+            'categoria', 'natureza_organizacao', 'tipo'
+        ]),
+        extrairPrimeiroValor($item, [
+            'nome_fantasia', 'nomeFantasia', 'nome_estabelecimento', 'estabelecimento',
+            'razao_social', 'razaoSocial', 'nome'
+        ]),
+        resumirItemGenerico($item),
+    ];
+
+    foreach ($textos as $texto) {
+        if (textoPareceUbs($texto)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function normalizarListaArboviroses(array $lista, string $doenca): array
 {
     $itens = [];
@@ -801,7 +851,32 @@ function obterUbsPorMunicipio(string $uf, string $cidade, string $codigoMunicipi
         'offset' => 0,
     ]);
 
-    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'UBS');
+    if (!isset($lista['erro'])) {
+        return normalizarListaServicosSaude($lista, 'UBS');
+    }
+
+    $codigoUf = obterCodigoUf($uf);
+    $codigoMunicipio = normalizarCodigoMunicipio($codigoMunicipio);
+
+    if ($codigoUf === '' || $codigoMunicipio === '') {
+        return $lista;
+    }
+
+    $fallback = obterListaApiSaude('/cnes/estabelecimentos', [
+        'codigo_uf' => $codigoUf,
+        'codigo_municipio' => $codigoMunicipio,
+        'status' => 1,
+        'limit' => 20,
+        'offset' => 0,
+    ]);
+
+    if (isset($fallback['erro'])) {
+        return $lista;
+    }
+
+    $ubs = array_values(array_filter($fallback, static fn($item): bool => is_array($item) && itemPareceUbs($item)));
+
+    return normalizarListaServicosSaude($ubs, 'UBS');
 }
 
 function obterArbovirosesPorMunicipio(string $uf, string $cidade, string $doenca, string $codigoMunicipio = ''): array
