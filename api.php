@@ -132,6 +132,17 @@ function limparNomeMunicipio(string $municipio): string
     return trim($municipio);
 }
 
+function normalizarCodigoMunicipio(string $codigo): string
+{
+    $codigo = preg_replace('/\D/', '', $codigo) ?? $codigo;
+
+    if (strlen($codigo) === 7) {
+        $codigo = substr($codigo, 0, 6);
+    }
+
+    return $codigo;
+}
+
 function normalizarChaveCampo(string $chave): string
 {
     $chave = mb_strtolower(removerAcentos($chave));
@@ -478,7 +489,7 @@ function obterEstadosECidades(string $uf = ''): array
         $registrosIndexados[$chave] = [
             'uf' => $ufRegistro,
             'municipio' => $municipio,
-            'codigo_municipio' => $codigoMunicipio,
+            'codigo_municipio' => normalizarCodigoMunicipio($codigoMunicipio),
             'regiao_saude' => $regiaoSaude,
             'macrorregiao_saude' => $macrorregiaoSaude
         ];
