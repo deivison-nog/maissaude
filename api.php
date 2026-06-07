@@ -99,15 +99,77 @@ function limparNomeMunicipio(string $municipio): string
     return trim($municipio);
 }
 
-function extrairValor(array $item, array $campos): string
+function normalizarChaveCampo(string $chave): string
 {
-    foreach ($campos as $campo) {
-        if (array_key_exists($campo, $item) && $item[$campo] !== null && $item[$campo] !== '') {
-            return normalizarTexto((string) $item[$campo]);
+    $chave = mb_strtolower(removerAcentos($chave));
+    return preg_replace('/[^a-z0-9]/', '', $chave) ?? $chave;
+}
+
+function converterValorParaTexto($valor): string
+{
+    if (is_string($valor) || is_numeric($valor)) {
+        return normalizarTexto((string) $valor);
+    }
+
+    if (is_array($valor)) {
+        foreach (['nome', 'name', 'sigla', 'codigo', 'id'] as $campo) {
+            if (array_key_exists($campo, $valor)) {
+                return converterValorParaTexto($valor[$campo]);
+            }
         }
     }
 
     return '';
+}
+
+function extrairValor(array $item, array $campos): string
+{
+    foreach ($campos as $campo) {
+        if (array_key_exists($campo, $item)) {
+            $valor = converterValorParaTexto($item[$campo]);
+            if ($valor !== '') {
+                return $valor;
+            }
+        }
+    }
+
+    $mapaNormalizado = [];
+    foreach ($item as $chave => $valor) {
+        $mapaNormalizado[normalizarChaveCampo((string) $chave)] = $valor;
+    }
+
+    foreach ($campos as $campo) {
+        $campoNormalizado = normalizarChaveCampo($campo);
+        if (!array_key_exists($campoNormalizado, $mapaNormalizado)) {
+            continue;
+        }
+
+        $valor = converterValorParaTexto($mapaNormalizado[$campoNormalizado]);
+        if ($valor !== '') {
+            return $valor;
+        }
+    }
+
+    return '';
+}
+
+function extrairValorAninhado(array $item, array $caminho): string
+{
+    $valor = $item;
+
+    foreach ($caminho as $chave) {
+        if (!is_array($valor) || !array_key_exists($chave, $valor)) {
+            return '';
+        }
+
+        $valor = $valor[$chave];
+    }
+
+    if ($valor === null || $valor === '') {
+        return '';
+    }
+
+    return normalizarTexto((string) $valor);
 }
 
 function ehListaDeObjetos(array $valor): bool
@@ -152,6 +214,26 @@ function encontrarListaDeObjetos(array $dados): array
     return [];
 }
 
+function obterListaMunicipiosIbge(string $uf): array
+{
+    $url = 'https://servicodados.ibge.gov.br/api/v1/localidades/estados/' . urlencode($uf) . '/municipios';
+    $dados = chamarApi($url);
+
+    if (isset($dados['erro'])) {
+        return $dados;
+    }
+
+    if (!ehListaDeObjetos($dados)) {
+        return [
+            'erro' => 'Estrutura JSON não reconhecida',
+            'url' => $url,
+            'json_bruto' => $dados
+        ];
+    }
+
+    return array_values($dados);
+}
+
 function obterListaMunicipiosPorUf(string $uf): array
 {
     $uf = strtoupper(trim($uf));
@@ -162,22 +244,29 @@ function obterListaMunicipiosPorUf(string $uf): array
 
     $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=860&offset=0';
     $dados = chamarApi($url);
+    $erroApiSaude = null;
 
     if (isset($dados['erro'])) {
-        return $dados;
+        $erroApiSaude = $dados;
+    } else {
+        $lista = encontrarListaDeObjetos($dados);
+
+        if ($lista !== []) {
+            return $lista;
+        }
     }
 
-    $lista = encontrarListaDeObjetos($dados);
+    $fallback = obterListaMunicipiosIbge($uf);
 
-    if ($lista === []) {
+    if (isset($fallback['erro'])) {
         return [
-            'erro' => 'Estrutura JSON não reconhecida',
-            'url' => $url,
-            'json_bruto' => $dados
+            'erro' => 'Falha ao buscar municípios nas APIs disponíveis',
+            'api_saude' => $erroApiSaude ?? ['erro' => 'Estrutura JSON não reconhecida', 'url' => $url],
+            'api_ibge' => $fallback
         ];
     }
 
-    return $lista;
+    return $fallback;
 }
 
 function obterEstadosFixos(): array
@@ -222,11 +311,27 @@ function obterEstadosECidades(string $uf = ''): array
             continue;
         }
 
-        $ufRegistro = extrairValor($item, ['sigla_uf', 'uf', 'estado']);
-        $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'cidade']);
+        $ufRegistro = extrairValor($item, ['sigla_uf', 'siglaUf', 'uf', 'estado', 'uf_sigla']);
+        $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'nomeMunicipio', 'municipio_nome', 'cidade', 'nome']);
         $regiaoSaude = extrairValor($item, ['regiao_saude', 'nome_regiao_saude']);
         $macrorregiaoSaude = extrairValor($item, ['macrorregiao_saude', 'macrorregiao', 'nome_macrorregiao']);
-        $codigoMunicipio = extrairValor($item, ['codigo_municipio', 'codigo_ibge']);
+        $codigoMunicipio = extrairValor($item, ['codigo_municipio', 'codigoMunicipio', 'codigo_ibge', 'codigoIbge', 'id']);
+
+        if ($ufRegistro === '') {
+            $ufRegistro = extrairValorAninhado($item, ['microrregiao', 'mesorregiao', 'UF', 'sigla']);
+        }
+
+        if ($regiaoSaude === '') {
+            $regiaoSaude = extrairValorAninhado($item, ['microrregiao', 'nome']);
+        }
+
+        if ($macrorregiaoSaude === '') {
+            $macrorregiaoSaude = extrairValorAninhado($item, ['microrregiao', 'mesorregiao', 'nome']);
+        }
+
+        if ($ufRegistro === '') {
+            $ufRegistro = $uf;
+        }
 
         if ($ufRegistro === '' || $municipio === '') {
             continue;

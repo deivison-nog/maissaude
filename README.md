@@ -1,6 +1,6 @@
 # maissaude
 
-Projeto PHP simples para fluxo **Estado → Cidade → Resultado** usando a API de Dados Abertos da Saúde.
+Projeto PHP simples para fluxo **Estado → Cidade → Resultado** usando a API de Dados Abertos da Saúde, com fallback para API do IBGE quando necessário.
 
 ## Arquivos principais
 
