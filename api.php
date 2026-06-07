@@ -15,6 +15,49 @@ const CNES_ESTABELECIMENTOS_POR_PAGINA = 50;
 /** Total máximo de estabelecimentos buscados por município (evita excesso de chamadas). */
 const CNES_ESTABELECIMENTOS_MAX_TOTAL = 2000;
 
+if (!function_exists('array_is_list')) {
+    function array_is_list(array $array): bool
+    {
+        $indiceEsperado = 0;
+
+        foreach ($array as $chave => $_valor) {
+            if ($chave !== $indiceEsperado) {
+                return false;
+            }
+
+            $indiceEsperado++;
+        }
+
+        return true;
+    }
+}
+
+function textoParaMaiusculas(string $texto): string
+{
+    return function_exists('mb_strtoupper') ? mb_strtoupper($texto) : strtoupper($texto);
+}
+
+function textoParaMinusculas(string $texto): string
+{
+    return function_exists('mb_strtolower') ? mb_strtolower($texto) : strtolower($texto);
+}
+
+function recortarTexto(string $texto, int $inicio, int $limite): string
+{
+    return function_exists('mb_substr') ? mb_substr($texto, $inicio, $limite) : substr($texto, $inicio, $limite);
+}
+
+function extrairCodigoHttpCabecalhos(array $cabecalhos): int
+{
+    foreach (array_reverse($cabecalhos) as $cabecalho) {
+        if (preg_match('/^HTTP\/\S+\s+(\d{3})\b/', $cabecalho, $matches) === 1) {
+            return (int) $matches[1];
+        }
+    }
+
+    return 0;
+}
+
 function sanitizarUrlParaDebug(string $url): string
 {
     $partes = parse_url($url);
@@ -41,24 +84,50 @@ function sanitizarUrlParaDebug(string $url): string
 
 function chamarApi(string $url): array
 {
-    $ch = curl_init();
+    $response = false;
+    $httpCode = 0;
+    $error = '';
 
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 30,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTPHEADER => [
-            'Accept: application/json',
-            'User-Agent: Mozilla/5.0 PHP Saude Demo'
-        ]
-    ]);
+    if (function_exists('curl_init')) {
+        $ch = curl_init();
 
-    $response = curl_exec($ch);
-    $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $error = curl_error($ch);
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+                'User-Agent: Mozilla/5.0 PHP Saude Demo'
+            ]
+        ]);
 
-    curl_close($ch);
+        $response = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+
+        curl_close($ch);
+    } else {
+        $contexto = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 30,
+                'ignore_errors' => true,
+                'header' => implode("\r\n", [
+                    'Accept: application/json',
+                    'User-Agent: Mozilla/5.0 PHP Saude Demo',
+                ]),
+            ],
+        ]);
+
+        $response = @file_get_contents($url, false, $contexto);
+        $cabecalhos = isset($http_response_header) && is_array($http_response_header) ? $http_response_header : [];
+        $httpCode = extrairCodigoHttpCabecalhos($cabecalhos);
+
+        if ($response === false) {
+            $error = 'Falha ao acessar endpoint remoto';
+        }
+    }
 
     if ($error) {
         return ['erro' => $error, 'url' => sanitizarUrlParaDebug($url)];
@@ -74,7 +143,7 @@ function chamarApi(string $url): array
         return [
             'erro' => 'Resposta inválida da API',
             'url' => sanitizarUrlParaDebug($url),
-            'resposta_bruta' => mb_substr((string) $response, 0, 1000)
+            'resposta_bruta' => recortarTexto((string) $response, 0, 1000)
         ];
     }
 
@@ -90,13 +159,17 @@ function normalizarTexto(string $texto): string
 
 function removerAcentos(string $texto): string
 {
+    if (!function_exists('iconv')) {
+        return $texto;
+    }
+
     $convertido = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto);
     return $convertido !== false ? $convertido : $texto;
 }
 
 function nomeEstadoParaSigla(string $nome): string
 {
-    $nome = mb_strtoupper(normalizarTexto(removerAcentos($nome)));
+    $nome = textoParaMaiusculas(normalizarTexto(removerAcentos($nome)));
 
     $mapa = [
         'ACRE' => 'AC',
@@ -249,7 +322,7 @@ function extrairMensagemErroApi(array $dados): string
 
 function normalizarChaveCampo(string $chave): string
 {
-    $chave = mb_strtolower(removerAcentos($chave));
+    $chave = textoParaMinusculas(removerAcentos($chave));
     return preg_replace('/[^a-z0-9]/', '', $chave) ?? $chave;
 }
 
@@ -602,7 +675,7 @@ function obterEstadosECidades(string $uf = ''): array
 
         $cidadesPorEstado[$ufRegistro][] = $municipio;
 
-        $chave = $ufRegistro . '|' . mb_strtolower($municipio);
+        $chave = $ufRegistro . '|' . textoParaMinusculas($municipio);
         $registrosIndexados[$chave] = [
             'uf' => $ufRegistro,
             'municipio' => $municipio,
@@ -634,7 +707,7 @@ function obterEstadosECidades(string $uf = ''): array
 
 function obterRegistroMunicipio(array $registros, string $uf, string $cidade): ?array
 {
-    $cidadeNormalizada = mb_strtolower(limparNomeMunicipio($cidade));
+    $cidadeNormalizada = textoParaMinusculas(limparNomeMunicipio($cidade));
 
     foreach ($registros as $registro) {
         if (!isset($registro['uf'], $registro['municipio'])) {
@@ -645,7 +718,7 @@ function obterRegistroMunicipio(array $registros, string $uf, string $cidade): ?
             continue;
         }
 
-        if (mb_strtolower(limparNomeMunicipio((string) $registro['municipio'])) !== $cidadeNormalizada) {
+        if (textoParaMinusculas(limparNomeMunicipio((string) $registro['municipio'])) !== $cidadeNormalizada) {
             continue;
         }
 
@@ -816,7 +889,7 @@ function normalizarListaServicosSaude(array $lista, string $tipoPadrao = '', arr
 
 function textoPareceUbs(string $texto): bool
 {
-    $texto = mb_strtoupper(normalizarTexto(removerAcentos($texto)));
+    $texto = textoParaMaiusculas(normalizarTexto(removerAcentos($texto)));
 
     if ($texto === '') {
         return false;
@@ -929,7 +1002,7 @@ function normalizarListaMaisMedicos(array $lista): array
 
 function lerEstabelecimentosJsonLocal(string $cidade): array
 {
-    $nomeArquivo = mb_strtolower(removerAcentos(normalizarTexto($cidade)));
+    $nomeArquivo = textoParaMinusculas(removerAcentos(normalizarTexto($cidade)));
     $nomeArquivo = preg_replace('/\s+/', '_', $nomeArquivo) ?? $nomeArquivo;
     $nomeArquivo = preg_replace('/[^a-z0-9_]/', '', $nomeArquivo) ?? $nomeArquivo;
     $caminho = __DIR__ . '/' . $nomeArquivo . '_cidade.json';
@@ -978,7 +1051,7 @@ function itemPareceHospital(array $item): bool
     ];
 
     foreach ($textos as $texto) {
-        $texto = mb_strtoupper(normalizarTexto(removerAcentos($texto)));
+        $texto = textoParaMaiusculas(normalizarTexto(removerAcentos($texto)));
         foreach (['HOSPITAL', 'PRONTO SOCORRO', 'PRONTO-SOCORRO', 'UPA', 'UNIDADE MISTA'] as $termo) {
             if (str_contains($texto, $termo)) {
                 return true;
