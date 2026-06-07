@@ -1,7 +1,37 @@
 <?php
 
+/** URL base da API pública usada pelas integrações do projeto. */
 const API_SAUDE_BASE_URL = 'https://apidadosabertos.saude.gov.br';
+
+/** Limite suficiente para cobrir o maior conjunto conhecido de municípios por UF. */
 const MAX_MUNICIPIOS_POR_UF = 860;
+
+/** Quantidade máxima de pares chave/valor incluídos em resumos genéricos. */
+const RESUMO_ITEM_LIMITE_CAMPOS = 4;
+
+function sanitizarUrlParaDebug(string $url): string
+{
+    $partes = parse_url($url);
+    if (!is_array($partes)) {
+        return $url;
+    }
+
+    $base = '';
+
+    if (isset($partes['scheme'])) {
+        $base .= $partes['scheme'] . '://';
+    }
+
+    if (isset($partes['host'])) {
+        $base .= $partes['host'];
+    }
+
+    if (isset($partes['port'])) {
+        $base .= ':' . $partes['port'];
+    }
+
+    return $base . ($partes['path'] ?? '');
+}
 
 function chamarApi(string $url): array
 {
@@ -25,11 +55,11 @@ function chamarApi(string $url): array
     curl_close($ch);
 
     if ($error) {
-        return ['erro' => $error, 'url' => $url];
+        return ['erro' => $error, 'url' => sanitizarUrlParaDebug($url)];
     }
 
     if ($httpCode !== 200) {
-        return ['erro' => 'Erro HTTP: ' . $httpCode, 'url' => $url];
+        return ['erro' => 'Erro HTTP: ' . $httpCode, 'url' => sanitizarUrlParaDebug($url)];
     }
 
     $data = json_decode($response, true);
@@ -37,7 +67,7 @@ function chamarApi(string $url): array
     if (!is_array($data)) {
         return [
             'erro' => 'Resposta inválida da API',
-            'url' => $url,
+            'url' => sanitizarUrlParaDebug($url),
             'resposta_bruta' => mb_substr((string) $response, 0, 1000)
         ];
     }
@@ -282,7 +312,7 @@ function obterListaApiSaude(string $caminho, array $parametros = []): array
 
     return [
         'erro' => 'Estrutura JSON não reconhecida',
-        'url' => $url,
+        'url' => sanitizarUrlParaDebug($url),
         'json_bruto' => $dados
     ];
 }
@@ -350,7 +380,7 @@ function obterListaMunicipiosPorUf(string $uf): array
 
         $erroApiSaude = [
             'erro' => 'Estrutura da lista sem municípios utilizáveis',
-            'url' => $url
+            'url' => sanitizarUrlParaDebug($url)
         ];
     }
 
@@ -359,7 +389,7 @@ function obterListaMunicipiosPorUf(string $uf): array
     if (isset($fallback['erro'])) {
         return [
             'erro' => 'Falha ao buscar municípios nas APIs disponíveis',
-            'api_saude' => $erroApiSaude ?? ['erro' => 'Estrutura JSON não reconhecida', 'url' => $url],
+            'api_saude' => $erroApiSaude ?? ['erro' => 'Estrutura JSON não reconhecida', 'url' => sanitizarUrlParaDebug($url)],
             'api_ibge' => $fallback
         ];
     }
@@ -545,7 +575,7 @@ function resumirItemGenerico(array $item): string
         }
 
         $pares[] = sprintf('%s: %s', (string) $chave, normalizarTexto((string) $valor));
-        if (count($pares) >= 4) {
+        if (count($pares) >= RESUMO_ITEM_LIMITE_CAMPOS) {
             break;
         }
     }

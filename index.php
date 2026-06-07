@@ -92,6 +92,7 @@ const blocoEstabelecimentosEl = document.getElementById('bloco-estabelecimentos'
 const statusEpidemiologiaEl = document.getElementById('status-epidemiologia');
 const blocoEpidemiologiaEl = document.getElementById('bloco-epidemiologia');
 const resumoMaisMedicosEl = document.getElementById('resumo-mais-medicos');
+const PREVIEW_ITEMS_LIMIT = 5;
 
 function escapeHtml(value) {
     return String(value)
@@ -131,8 +132,8 @@ function montarListaHtml(itens, formatter, emptyMessage) {
         return `<p class="muted">${escapeHtml(emptyMessage)}</p>`;
     }
 
-    const preview = itens.slice(0, 5).map(formatter).join('');
-    const restante = itens.slice(5).map(formatter).join('');
+    const preview = itens.slice(0, PREVIEW_ITEMS_LIMIT).map(formatter).join('');
+    const restante = itens.slice(PREVIEW_ITEMS_LIMIT).map(formatter).join('');
 
     if (!restante) {
         return `<ul>${preview}</ul>`;
