@@ -143,6 +143,58 @@ function normalizarCodigoMunicipio(string $codigo): string
     return $codigo;
 }
 
+function obterCodigoUf(string $uf): string
+{
+    $mapa = [
+        'RO' => '11',
+        'AC' => '12',
+        'AM' => '13',
+        'RR' => '14',
+        'PA' => '15',
+        'AP' => '16',
+        'TO' => '17',
+        'MA' => '21',
+        'PI' => '22',
+        'CE' => '23',
+        'RN' => '24',
+        'PB' => '25',
+        'PE' => '26',
+        'AL' => '27',
+        'SE' => '28',
+        'BA' => '29',
+        'MG' => '31',
+        'ES' => '32',
+        'RJ' => '33',
+        'SP' => '35',
+        'PR' => '41',
+        'SC' => '42',
+        'RS' => '43',
+        'MS' => '50',
+        'MT' => '51',
+        'GO' => '52',
+        'DF' => '53',
+    ];
+
+    $uf = strtoupper(trim($uf));
+    return $mapa[$uf] ?? '';
+}
+
+function extrairMensagemErroApi(array $dados): string
+{
+    foreach (['erro', 'error', 'message', 'detail'] as $campo) {
+        if (!array_key_exists($campo, $dados)) {
+            continue;
+        }
+
+        $valor = $dados[$campo];
+        if (is_string($valor) && trim($valor) !== '') {
+            return normalizarTexto($valor);
+        }
+    }
+
+    return '';
+}
+
 function normalizarChaveCampo(string $chave): string
 {
     $chave = mb_strtolower(removerAcentos($chave));
@@ -310,6 +362,15 @@ function obterListaApiSaude(string $caminho, array $parametros = []): array
 
     if (isset($dados['erro'])) {
         return $dados;
+    }
+
+    $mensagemErro = extrairMensagemErroApi($dados);
+    if ($mensagemErro !== '') {
+        return [
+            'erro' => $mensagemErro,
+            'url' => sanitizarUrlParaDebug($url),
+            'json_bruto' => $dados,
+        ];
     }
 
     $lista = encontrarListaDeObjetos($dados);
@@ -709,9 +770,11 @@ function normalizarListaMaisMedicos(array $lista): array
 function obterEstabelecimentosPorMunicipio(string $codigoMunicipio, string $uf = '', string $cidade = ''): array
 {
     $lista = obterListaApiSaude('/cnes/estabelecimentos', [
-        'codigo_municipio' => $codigoMunicipio,
-        'uf' => $uf,
-        'municipio' => $cidade,
+        'codigo_uf' => obterCodigoUf($uf),
+        'codigo_municipio' => normalizarCodigoMunicipio($codigoMunicipio),
+        'status' => 1,
+        'limit' => 20,
+        'offset' => 0,
     ]);
 
     return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Estabelecimento de saúde');
