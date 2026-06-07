@@ -113,12 +113,10 @@ function obterListaMunicipiosPorUf(string $uf): array
     $offset = 0;
     $limit = 860;
     $todos = [];
-    $ultimaResposta = null;
 
     while (true) {
         $url = 'https://apidadosabertos.saude.gov.br/macrorregiao-e-regiao-de-saude/municipio?sigla_uf=' . urlencode($uf) . '&limit=' . $limit . '&offset=' . $offset;
         $dados = chamarApi($url);
-        $ultimaResposta = $dados;
 
         if (isset($dados['erro'])) {
             return $dados;
