@@ -599,7 +599,7 @@ function obterRegistroMunicipio(array $registros, string $uf, string $cidade): ?
     return null;
 }
 
-function montarEnderecoServicoSaude(array $item): string
+function montarEnderecoServicoSaude(array $item, array $contexto = []): string
 {
     $logradouro = extrairPrimeiroValor($item, [
         'endereco', 'logradouro', 'nome_logradouro', 'logradouro_estabelecimento', 'endereco_estabelecimento'
@@ -610,10 +610,18 @@ function montarEnderecoServicoSaude(array $item): string
     ]);
     $numero = extrairPrimeiroValor($item, ['numero', 'numero_endereco', 'numero_estabelecimento'], [['endereco', 'numero']]);
     $complemento = extrairPrimeiroValor($item, ['complemento', 'complemento_endereco'], [['endereco', 'complemento']]);
-    $bairro = extrairPrimeiroValor($item, ['bairro'], [['endereco', 'bairro']]);
+    $bairro = extrairPrimeiroValor($item, ['bairro', 'bairro_estabelecimento'], [['endereco', 'bairro']]);
     $municipio = extrairPrimeiroValor($item, ['municipio', 'nome_municipio', 'cidade'], [['endereco', 'municipio']]);
     $uf = extrairPrimeiroValor($item, ['uf', 'sigla_uf'], [['endereco', 'uf']]);
-    $cep = extrairPrimeiroValor($item, ['cep'], [['endereco', 'cep']]);
+    $cep = extrairPrimeiroValor($item, ['cep', 'codigo_cep_estabelecimento'], [['endereco', 'cep']]);
+
+    if ($municipio === '' && isset($contexto['cidade']) && is_string($contexto['cidade'])) {
+        $municipio = $contexto['cidade'];
+    }
+
+    if ($uf === '' && isset($contexto['uf']) && is_string($contexto['uf'])) {
+        $uf = $contexto['uf'];
+    }
 
     $partes = [];
     $linhaLogradouro = implode(', ', array_filter([$logradouro, $numero, $complemento], static fn(string $valor): bool => $valor !== ''));
@@ -655,7 +663,7 @@ function resumirItemGenerico(array $item): string
     return implode(' | ', $pares);
 }
 
-function normalizarListaServicosSaude(array $lista, string $tipoPadrao = ''): array
+function normalizarListaServicosSaude(array $lista, string $tipoPadrao = '', array $contexto = []): array
 {
     $itens = [];
 
@@ -666,31 +674,73 @@ function normalizarListaServicosSaude(array $lista, string $tipoPadrao = ''): ar
 
         $nome = extrairPrimeiroValor($item, [
             'nome_fantasia', 'nomeFantasia', 'nome_estabelecimento', 'estabelecimento',
-            'razao_social', 'razaoSocial', 'nome'
+            'razao_social', 'razaoSocial', 'nome_razao_social', 'nome'
         ]);
+        $razaoSocial = extrairPrimeiroValor($item, ['nome_razao_social', 'razao_social', 'razaoSocial']);
         $tipo = extrairPrimeiroValor($item, [
             'tipo_unidade', 'tipoUnidade', 'descricao_subtipo_unidade', 'subtipo_unidade',
             'categoria', 'natureza_organizacao', 'tipo'
         ]);
         $telefone = extrairPrimeiroValor($item, [
-            'telefone', 'telefone1', 'telefone_1', 'numero_telefone', 'contato', 'telefone_estabelecimento'
+            'telefone', 'telefone1', 'telefone_1', 'numero_telefone', 'contato',
+            'telefone_estabelecimento', 'numero_telefone_estabelecimento'
         ], [
             ['contato', 'telefone'],
             ['endereco', 'telefone']
         ]);
         $codigo = extrairPrimeiroValor($item, ['cnes', 'codigo_cnes', 'codigo', 'id']);
+        $codigoEstabelecimento = extrairPrimeiroValor($item, ['codigo_estabelecimento_saude']);
+        $cnpj = extrairPrimeiroValor($item, ['numero_cnpj_entidade', 'numero_cnpj', 'cnpj']);
+        $email = extrairPrimeiroValor($item, ['endereco_email_estabelecimento', 'email']);
+        $gestao = extrairPrimeiroValor($item, ['tipo_gestao', 'gestao']);
+        $esferaAdministrativa = extrairPrimeiroValor($item, ['descricao_esfera_administrativa', 'esfera_administrativa']);
+        $turnoAtendimento = extrairPrimeiroValor($item, ['descricao_turno_atendimento', 'turno_atendimento']);
+        $atendeSus = extrairPrimeiroValor($item, ['estabelecimento_faz_atendimento_ambulatorial_sus', 'atendimento_ambulatorial_sus']);
+        $naturezaJuridica = extrairPrimeiroValor($item, ['descricao_natureza_juridica_estabelecimento', 'natureza_juridica']);
+        $atualizadoEm = extrairPrimeiroValor($item, ['data_atualizacao', 'updated_at']);
+        $latitude = extrairPrimeiroValor($item, ['latitude_estabelecimento_decimo_grau', 'latitude']);
+        $longitude = extrairPrimeiroValor($item, ['longitude_estabelecimento_decimo_grau', 'longitude']);
         $leitos = extrairPrimeiroValor($item, ['leitos', 'qtd_leitos', 'qt_leitos', 'quantidade_leitos', 'total_leitos']);
-        $endereco = montarEnderecoServicoSaude($item);
+        $endereco = montarEnderecoServicoSaude($item, $contexto);
+        $municipio = extrairPrimeiroValor($item, ['municipio', 'nome_municipio', 'cidade']);
+        $uf = extrairPrimeiroValor($item, ['uf', 'sigla_uf']);
+
+        if ($municipio === '' && isset($contexto['cidade']) && is_string($contexto['cidade'])) {
+            $municipio = $contexto['cidade'];
+        }
+
+        if ($uf === '' && isset($contexto['uf']) && is_string($contexto['uf'])) {
+            $uf = $contexto['uf'];
+        }
+
+        $localidade = implode('/', array_filter([$municipio, $uf], static fn(string $valor): bool => $valor !== ''));
+        $coordenadas = implode(', ', array_filter([$latitude, $longitude], static fn(string $valor): bool => $valor !== ''));
 
         $registro = array_filter([
             'nome' => $nome,
+            'razao_social' => $razaoSocial,
             'tipo' => $tipo !== '' ? $tipo : $tipoPadrao,
             'endereco' => $endereco,
+            'localidade' => $localidade,
             'telefone' => $telefone,
+            'email' => $email,
+            'cnpj' => $cnpj,
+            'gestao' => $gestao,
+            'esfera_administrativa' => $esferaAdministrativa,
+            'turno_atendimento' => $turnoAtendimento,
+            'atende_sus' => $atendeSus,
             'codigo' => $codigo,
+            'codigo_estabelecimento' => $codigoEstabelecimento,
             'leitos' => $leitos,
+            'natureza_juridica' => $naturezaJuridica,
+            'coordenadas' => $coordenadas,
+            'atualizado_em' => $atualizadoEm,
             'descricao' => resumirItemGenerico($item),
         ], static fn(string $valor): bool => $valor !== '');
+
+        if (!isset($registro['nome']) && isset($registro['razao_social'])) {
+            $registro['nome'] = $registro['razao_social'];
+        }
 
         if (!isset($registro['nome']) && isset($registro['descricao'])) {
             $registro['nome'] = $registro['descricao'];
@@ -740,7 +790,7 @@ function itemPareceUbs(array $item): bool
         ]),
         extrairPrimeiroValor($item, [
             'nome_fantasia', 'nomeFantasia', 'nome_estabelecimento', 'estabelecimento',
-            'razao_social', 'razaoSocial', 'nome'
+            'razao_social', 'razaoSocial', 'nome_razao_social', 'nome'
         ]),
         resumirItemGenerico($item),
     ];
@@ -827,7 +877,10 @@ function obterEstabelecimentosPorMunicipio(string $codigoMunicipio, string $uf =
         'offset' => 0,
     ]);
 
-    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Estabelecimento de saúde');
+    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Estabelecimento de saúde', [
+        'uf' => $uf,
+        'cidade' => $cidade,
+    ]);
 }
 
 function obterHospitaisPorMunicipio(string $uf, string $cidade, string $codigoMunicipio = ''): array
@@ -839,7 +892,10 @@ function obterHospitaisPorMunicipio(string $uf, string $cidade, string $codigoMu
         'offset' => 0,
     ]);
 
-    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Hospital');
+    return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Hospital', [
+        'uf' => $uf,
+        'cidade' => $cidade,
+    ]);
 }
 
 function obterUbsPorMunicipio(string $uf, string $cidade, string $codigoMunicipio = ''): array
@@ -852,7 +908,10 @@ function obterUbsPorMunicipio(string $uf, string $cidade, string $codigoMunicipi
     ]);
 
     if (!isset($lista['erro'])) {
-        return normalizarListaServicosSaude($lista, 'UBS');
+        return normalizarListaServicosSaude($lista, 'UBS', [
+            'uf' => $uf,
+            'cidade' => $cidade,
+        ]);
     }
 
     $codigoUf = obterCodigoUf($uf);
@@ -876,7 +935,10 @@ function obterUbsPorMunicipio(string $uf, string $cidade, string $codigoMunicipi
 
     $ubs = array_values(array_filter($fallback, static fn($item): bool => is_array($item) && itemPareceUbs($item)));
 
-    return normalizarListaServicosSaude($ubs, 'UBS');
+    return normalizarListaServicosSaude($ubs, 'UBS', [
+        'uf' => $uf,
+        'cidade' => $cidade,
+    ]);
 }
 
 function obterArbovirosesPorMunicipio(string $uf, string $cidade, string $doenca, string $codigoMunicipio = ''): array

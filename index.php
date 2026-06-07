@@ -29,6 +29,8 @@ $estados = obterEstadosFixos();
         details { margin-top: 0.75rem; }
         details summary { cursor: pointer; font-weight: 600; }
         .section-hidden { display: none; }
+        .service-details { display: grid; gap: 0.2rem; margin-top: 0.35rem; }
+        .service-details span { display: block; }
     </style>
 </head>
 <body>
@@ -163,19 +165,32 @@ function montarListaHtml(itens, formatter, emptyMessage) {
 
 function formatarServico(item) {
     const nome = item.nome || item.descricao || 'Registro';
-    const descricaoDetalhada = item.descricao && item.descricao !== nome
-        ? `Detalhes: ${item.descricao}`
-        : '';
     const detalhes = [
-        item.tipo,
-        item.endereco,
-        item.telefone ? `Telefone: ${item.telefone}` : '',
-        item.leitos ? `Leitos: ${item.leitos}` : '',
-        item.codigo ? `Código: ${item.codigo}` : '',
-        descricaoDetalhada,
-    ].filter(Boolean);
+        ['Tipo', item.tipo],
+        ['Razão social', item.razao_social && item.razao_social !== nome ? item.razao_social : ''],
+        ['CNPJ', item.cnpj],
+        ['Endereço', item.endereco],
+        ['Localidade', item.localidade],
+        ['Telefone', item.telefone],
+        ['E-mail', item.email],
+        ['Gestão', item.gestao],
+        ['Esfera administrativa', item.esfera_administrativa],
+        ['Turno', item.turno_atendimento],
+        ['Atendimento SUS', item.atende_sus],
+        ['CNES', item.codigo],
+        ['Código do estabelecimento', item.codigo_estabelecimento],
+        ['Leitos', item.leitos],
+        ['Natureza jurídica', item.natureza_juridica],
+        ['Coordenadas', item.coordenadas],
+        ['Atualizado em', item.atualizado_em],
+        ['Detalhes', item.descricao && item.descricao !== nome ? item.descricao : ''],
+    ].filter(([, valor]) => Boolean(valor));
 
-    return `<li><strong>${escapeHtml(nome)}</strong>${detalhes.length ? `<br><span class="muted">${escapeHtml(detalhes.join(' • '))}</span>` : ''}</li>`;
+    const detalhesHtml = detalhes.length
+        ? `<div class="service-details muted">${detalhes.map(([rotulo, valor]) => `<span><strong>${escapeHtml(rotulo)}:</strong> ${escapeHtml(valor)}</span>`).join('')}</div>`
+        : '';
+
+    return `<li><strong>${escapeHtml(nome)}</strong>${detalhesHtml}</li>`;
 }
 
 function formatarEventoEpidemiologico(item) {
