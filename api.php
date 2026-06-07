@@ -7,7 +7,7 @@ const API_SAUDE_BASE_URL = 'https://apidadosabertos.saude.gov.br';
 const MAX_MUNICIPIOS_POR_UF = 860;
 
 /** Quantidade máxima de pares chave/valor incluídos em resumos genéricos. */
-const RESUMO_ITEM_LIMITE_CAMPOS = 4;
+const RESUMO_ITEM_LIMITE_CAMPOS = 8;
 
 function sanitizarUrlParaDebug(string $url): string
 {

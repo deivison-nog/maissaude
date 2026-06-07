@@ -144,12 +144,16 @@ function montarListaHtml(itens, formatter, emptyMessage) {
 
 function formatarServico(item) {
     const nome = item.nome || item.descricao || 'Registro';
+    const descricaoDetalhada = item.descricao && item.descricao !== nome
+        ? `Detalhes: ${item.descricao}`
+        : '';
     const detalhes = [
         item.tipo,
         item.endereco,
         item.telefone ? `Telefone: ${item.telefone}` : '',
         item.leitos ? `Leitos: ${item.leitos}` : '',
         item.codigo ? `Código: ${item.codigo}` : '',
+        descricaoDetalhada,
     ].filter(Boolean);
 
     return `<li><strong>${escapeHtml(nome)}</strong>${detalhes.length ? `<br><span class="muted">${escapeHtml(detalhes.join(' • '))}</span>` : ''}</li>`;
