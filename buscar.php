@@ -93,6 +93,7 @@ switch ($action) {
             'erro' => '',
             'resultado' => $registroEncontrado,
         ]);
+        break;
 
     case 'estabelecimentos':
         $itens = obterEstabelecimentosPorMunicipio($codigoMunicipio, $uf, $municipio);
