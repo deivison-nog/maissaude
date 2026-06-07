@@ -179,6 +179,52 @@ function obterCodigoUf(string $uf): string
     return $mapa[$uf] ?? '';
 }
 
+function descricaoTipoUnidade(int $codigo): string
+{
+    $mapa = [
+        1  => 'Posto de Saúde',
+        2  => 'Unidade de Saúde da Família',
+        4  => 'Policlínica',
+        5  => 'Hospital Geral',
+        7  => 'Hospital Especializado',
+        15 => 'Unidade Mista',
+        20 => 'Pronto-socorro Geral',
+        21 => 'Pronto-socorro Especializado',
+        22 => 'Pronto-socorro de Trauma e Ortopedia',
+        32 => 'Telesaúde',
+        36 => 'Clínica/Centro de Especialidade',
+        39 => 'SADT Isolado',
+        40 => 'Unidade Móvel Terrestre',
+        42 => 'Unidade Móvel de Urgência',
+        43 => 'Farmácia',
+        50 => 'Unidade de Vigilância em Saúde',
+        60 => 'Cooperativa de Saúde',
+        61 => 'Centro de Parto Normal',
+        62 => 'Hospital/Dia',
+        64 => 'Central de Regulação',
+        67 => 'Laboratório de Saúde Pública',
+        68 => 'Secretaria de Saúde',
+        69 => 'Centro de Hemoterapia',
+        70 => 'Centro de Atenção Psicossocial',
+        71 => 'Centro de Apoio à Saúde da Família',
+        72 => 'Unidade de Saúde Indígena',
+        73 => 'Pronto Atendimento',
+        74 => 'Polo da Academia da Saúde',
+        75 => 'Telessaúde',
+        76 => 'Central de Regulação de Urgências',
+        77 => 'Serviço de Atenção Domiciliar',
+        78 => 'Unidade de Saúde da Família Fluvial',
+        79 => 'Unidade Odontológica Móvel',
+        80 => 'Laboratório de Saúde Pública',
+        81 => 'Unidade de Atenção Residencial',
+        82 => 'Unidade de Saúde Prisional',
+        83 => 'Polo de Promoção da Saúde',
+        85 => 'Centro de Imunização',
+    ];
+
+    return $mapa[$codigo] ?? '';
+}
+
 function extrairMensagemErroApi(array $dados): string
 {
     foreach (['erro', 'error', 'message', 'detail'] as $campo) {
@@ -681,6 +727,10 @@ function normalizarListaServicosSaude(array $lista, string $tipoPadrao = '', arr
             'tipo_unidade', 'tipoUnidade', 'descricao_subtipo_unidade', 'subtipo_unidade',
             'categoria', 'natureza_organizacao', 'tipo'
         ]);
+
+        if ($tipo === '' && isset($item['codigo_tipo_unidade'])) {
+            $tipo = descricaoTipoUnidade((int) $item['codigo_tipo_unidade']);
+        }
         $telefone = extrairPrimeiroValor($item, [
             'telefone', 'telefone1', 'telefone_1', 'numero_telefone', 'contato',
             'telefone_estabelecimento', 'numero_telefone_estabelecimento'
@@ -867,6 +917,65 @@ function normalizarListaMaisMedicos(array $lista): array
     return $itens;
 }
 
+function lerEstabelecimentosJsonLocal(string $cidade): array
+{
+    $nomeArquivo = mb_strtolower(removerAcentos(normalizarTexto($cidade)));
+    $nomeArquivo = preg_replace('/\s+/', '_', $nomeArquivo) ?? $nomeArquivo;
+    $nomeArquivo = preg_replace('/[^a-z0-9_]/', '', $nomeArquivo) ?? $nomeArquivo;
+    $caminho = __DIR__ . '/' . $nomeArquivo . '_cidade.json';
+
+    if (!is_file($caminho)) {
+        return ['erro' => 'Arquivo local não encontrado.'];
+    }
+
+    $conteudo = @file_get_contents($caminho);
+    if ($conteudo === false) {
+        return ['erro' => 'Falha ao ler arquivo local.'];
+    }
+
+    $dados = json_decode($conteudo, true);
+    if (!is_array($dados)) {
+        return ['erro' => 'Arquivo local com formato inválido.'];
+    }
+
+    if (isset($dados['estabelecimentos']) && is_array($dados['estabelecimentos'])) {
+        return $dados['estabelecimentos'];
+    }
+
+    $lista = encontrarListaDeObjetos($dados);
+    return $lista !== [] ? $lista : ['erro' => 'Estrutura do arquivo local não reconhecida.'];
+}
+
+function itemPareceHospital(array $item): bool
+{
+    $codigosHospital = [5, 7, 15, 20, 21, 22, 61, 62, 73];
+    if (isset($item['codigo_tipo_unidade']) && in_array((int) $item['codigo_tipo_unidade'], $codigosHospital, true)) {
+        return true;
+    }
+
+    $textos = [
+        extrairPrimeiroValor($item, [
+            'tipo_unidade', 'tipoUnidade', 'descricao_subtipo_unidade', 'subtipo_unidade',
+            'categoria', 'natureza_organizacao', 'tipo'
+        ]),
+        extrairPrimeiroValor($item, [
+            'nome_fantasia', 'nomeFantasia', 'nome_estabelecimento', 'estabelecimento',
+            'razao_social', 'razaoSocial', 'nome_razao_social', 'nome'
+        ]),
+    ];
+
+    foreach ($textos as $texto) {
+        $texto = mb_strtoupper(normalizarTexto(removerAcentos($texto)));
+        foreach (['HOSPITAL', 'PRONTO SOCORRO', 'PRONTO-SOCORRO', 'UPA', 'UNIDADE MISTA'] as $termo) {
+            if (str_contains($texto, $termo)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 function obterEstabelecimentosPorMunicipio(string $codigoMunicipio, string $uf = '', string $cidade = ''): array
 {
     $lista = obterListaApiSaude('/cnes/estabelecimentos', [
@@ -876,6 +985,10 @@ function obterEstabelecimentosPorMunicipio(string $codigoMunicipio, string $uf =
         'limit' => 20,
         'offset' => 0,
     ]);
+
+    if (isset($lista['erro']) && $cidade !== '') {
+        $lista = lerEstabelecimentosJsonLocal($cidade);
+    }
 
     return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Estabelecimento de saúde', [
         'uf' => $uf,
@@ -891,6 +1004,13 @@ function obterHospitaisPorMunicipio(string $uf, string $cidade, string $codigoMu
         'limit' => 20,
         'offset' => 0,
     ]);
+
+    if (isset($lista['erro']) && $cidade !== '') {
+        $locais = lerEstabelecimentosJsonLocal($cidade);
+        if (!isset($locais['erro'])) {
+            $lista = array_values(array_filter($locais, static fn($item): bool => is_array($item) && itemPareceHospital($item)));
+        }
+    }
 
     return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Hospital', [
         'uf' => $uf,
@@ -915,30 +1035,38 @@ function obterUbsPorMunicipio(string $uf, string $cidade, string $codigoMunicipi
     }
 
     $codigoUf = obterCodigoUf($uf);
-    $codigoMunicipio = normalizarCodigoMunicipio($codigoMunicipio);
+    $codigoMunicipioNorm = normalizarCodigoMunicipio($codigoMunicipio);
 
-    if ($codigoUf === '' || $codigoMunicipio === '') {
-        return $lista;
+    if ($codigoUf !== '' && $codigoMunicipioNorm !== '') {
+        $fallback = obterListaApiSaude('/cnes/estabelecimentos', [
+            'codigo_uf' => $codigoUf,
+            'codigo_municipio' => $codigoMunicipioNorm,
+            'status' => 1,
+            'limit' => 20,
+            'offset' => 0,
+        ]);
+
+        if (!isset($fallback['erro'])) {
+            $ubs = array_values(array_filter($fallback, static fn($item): bool => is_array($item) && itemPareceUbs($item)));
+            return normalizarListaServicosSaude($ubs, 'UBS', [
+                'uf' => $uf,
+                'cidade' => $cidade,
+            ]);
+        }
     }
 
-    $fallback = obterListaApiSaude('/cnes/estabelecimentos', [
-        'codigo_uf' => $codigoUf,
-        'codigo_municipio' => $codigoMunicipio,
-        'status' => 1,
-        'limit' => 20,
-        'offset' => 0,
-    ]);
-
-    if (isset($fallback['erro'])) {
-        return $lista;
+    if ($cidade !== '') {
+        $locais = lerEstabelecimentosJsonLocal($cidade);
+        if (!isset($locais['erro'])) {
+            $ubs = array_values(array_filter($locais, static fn($item): bool => is_array($item) && itemPareceUbs($item)));
+            return normalizarListaServicosSaude($ubs, 'UBS', [
+                'uf' => $uf,
+                'cidade' => $cidade,
+            ]);
+        }
     }
 
-    $ubs = array_values(array_filter($fallback, static fn($item): bool => is_array($item) && itemPareceUbs($item)));
-
-    return normalizarListaServicosSaude($ubs, 'UBS', [
-        'uf' => $uf,
-        'cidade' => $cidade,
-    ]);
+    return $lista;
 }
 
 function obterArbovirosesPorMunicipio(string $uf, string $cidade, string $doenca, string $codigoMunicipio = ''): array
