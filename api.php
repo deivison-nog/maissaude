@@ -783,9 +783,10 @@ function obterEstabelecimentosPorMunicipio(string $codigoMunicipio, string $uf =
 function obterHospitaisPorMunicipio(string $uf, string $cidade, string $codigoMunicipio = ''): array
 {
     $lista = obterListaApiSaude('/assistencia-a-saude/hospitais-e-leitos', [
-        'uf' => $uf,
+        'UF' => $uf,
         'municipio' => $cidade,
-        'codigo_municipio' => $codigoMunicipio,
+        'limit' => 20,
+        'offset' => 0,
     ]);
 
     return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'Hospital');
@@ -793,10 +794,11 @@ function obterHospitaisPorMunicipio(string $uf, string $cidade, string $codigoMu
 
 function obterUbsPorMunicipio(string $uf, string $cidade, string $codigoMunicipio = ''): array
 {
-    $lista = obterListaApiSaude('/assistencia-a-saude/unidade-basicas-de-saude', [
-        'uf' => $uf,
+    $lista = obterListaApiSaude('/assistencia-a-saude/unidades-basicas-de-saude', [
+        'UF' => $uf,
         'municipio' => $cidade,
-        'codigo_municipio' => $codigoMunicipio,
+        'limit' => 20,
+        'offset' => 0,
     ]);
 
     return isset($lista['erro']) ? $lista : normalizarListaServicosSaude($lista, 'UBS');
