@@ -4,16 +4,16 @@ Projeto PHP simples para fluxo **Estado → Cidade → Resultado** usando a API 
 
 ## Arquivos principais
 
-- `/tmp/workspace/deivison-nog/maissaude/index.php`: página principal com seleção de estado/cidade.
-- `/tmp/workspace/deivison-nog/maissaude/buscar.php`: endpoint JSON para cidades e resultado por município.
-- `/tmp/workspace/deivison-nog/maissaude/api.php`: biblioteca de integração com a API externa e endpoint JSON direto.
+- `index.php`: página principal com seleção de estado/cidade.
+- `buscar.php`: endpoint JSON para cidades e resultado por município.
+- `api.php`: biblioteca de integração com a API externa e endpoint JSON direto.
 
 ## Executar localmente
 
 Com PHP 8+:
 
 ```bash
-cd /tmp/workspace/deivison-nog/maissaude
+cd <diretorio-do-projeto>
 php -S localhost:8000
 ```
 
