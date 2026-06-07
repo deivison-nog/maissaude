@@ -41,7 +41,7 @@ $estados = obterEstadosFixos();
         </select>
     </div>
 
-    <button type="submit" disabled id="btn-consultar">Consultar resultado</button>
+    <button type="submit" disabled id="btn-consultar" aria-describedby="status">Consultar resultado</button>
 </form>
 
 <p id="status" class="muted"></p>
@@ -61,9 +61,17 @@ function resetResultado(msg = 'Nenhum resultado ainda.') {
     resultadoEl.textContent = msg;
 }
 
+function resetCidadeSelect(textoPlaceholder) {
+    cidadeSelect.options.length = 0;
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = textoPlaceholder;
+    cidadeSelect.appendChild(option);
+}
+
 ufSelect.addEventListener('change', async () => {
     const uf = ufSelect.value;
-    cidadeSelect.innerHTML = '<option value="">Selecione...</option>';
+    resetCidadeSelect('Selecione...');
     cidadeSelect.disabled = true;
     btnConsultar.disabled = true;
     resetResultado();
