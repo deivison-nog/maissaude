@@ -27,7 +27,7 @@ function normalizarDoencaSolicitada(string $doenca): string
 }
 
 $action = trim((string) ($_GET['action'] ?? 'estados'));
-$uf = strtoupper(trim((string) ($_GET['uf'] ?? '')));
+$uf = nomeEstadoParaSigla((string) ($_GET['uf'] ?? ''));
 $cidade = trim((string) ($_GET['cidade'] ?? ''));
 $doenca = trim((string) ($_GET['doenca'] ?? 'dengue'));
 $acoesPermitidas = [

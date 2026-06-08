@@ -561,7 +561,7 @@ function listaContemMunicipiosUtilizaveis(array $lista): bool
 
 function obterListaMunicipiosFallbackLocal(string $uf): array
 {
-    $uf = strtoupper(trim($uf));
+    $uf = nomeEstadoParaSigla($uf);
 
     $municipiosPorUf = [
         'PA' => [
@@ -608,7 +608,7 @@ function obterListaMunicipiosFallbackLocal(string $uf): array
 
 function obterListaMunicipiosPorUf(string $uf): array
 {
-    $uf = strtoupper(trim($uf));
+    $uf = nomeEstadoParaSigla($uf);
 
     if ($uf === '') {
         return ['erro' => 'UF não informada'];
