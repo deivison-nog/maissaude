@@ -31,6 +31,8 @@ $estados = obterEstadosFixos();
         .section-hidden { display: none; }
         .service-details { display: grid; gap: 0.2rem; margin-top: 0.35rem; }
         .service-details span { display: block; }
+        .service-item-header { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .service-toggle-btn { padding: 0.2rem 0.5rem; font-size: 0.85rem; line-height: 1.2; }
     </style>
 </head>
 <body>
@@ -96,6 +98,7 @@ const blocoEpidemiologiaEl = document.getElementById('bloco-epidemiologia');
 const resumoMaisMedicosEl = document.getElementById('resumo-mais-medicos');
 const PREVIEW_ITEMS_LIMIT = 5;
 const paramsIniciais = new URLSearchParams(window.location.search);
+let serviceDetailsCounter = 0;
 
 function escapeHtml(value) {
     return String(value)
@@ -153,8 +156,15 @@ function montarListaHtml(itens, formatter, emptyMessage) {
         return `<p class="muted">${escapeHtml(emptyMessage)}</p>`;
     }
 
-    const preview = itens.slice(0, PREVIEW_ITEMS_LIMIT).map(formatter).join('');
-    const restante = itens.slice(PREVIEW_ITEMS_LIMIT).map(formatter).join('');
+    const formatarComIndice = (item, index, offset = 0) => formatter(item, index + offset);
+    const preview = itens
+        .slice(0, PREVIEW_ITEMS_LIMIT)
+        .map((item, index) => formatarComIndice(item, index))
+        .join('');
+    const restante = itens
+        .slice(PREVIEW_ITEMS_LIMIT)
+        .map((item, index) => formatarComIndice(item, index, PREVIEW_ITEMS_LIMIT))
+        .join('');
 
     if (!restante) {
         return `<ul>${preview}</ul>`;
@@ -163,7 +173,7 @@ function montarListaHtml(itens, formatter, emptyMessage) {
     return `<ul>${preview}</ul><details><summary>Ver todos (${itens.length})</summary><ul>${restante}</ul></details>`;
 }
 
-function formatarServico(item) {
+function formatarServico(item, index = 0) {
     const nome = item.nome || item.descricao || 'Registro';
     const detalhes = [
         ['Tipo', item.tipo],
@@ -190,7 +200,12 @@ function formatarServico(item) {
         ? `<div class="service-details muted">${detalhes.map(([rotulo, valor]) => `<span><strong>${escapeHtml(rotulo)}:</strong> ${escapeHtml(valor)}</span>`).join('')}</div>`
         : '';
 
-    return `<li><strong>${escapeHtml(nome)}</strong>${detalhesHtml}</li>`;
+    if (!detalhesHtml) {
+        return `<li><strong>${escapeHtml(nome)}</strong></li>`;
+    }
+
+    const detailsId = `service-details-${serviceDetailsCounter++}-${index}`;
+    return `<li><div class="service-item-header"><strong>${escapeHtml(nome)}</strong><button type="button" class="service-toggle-btn" data-details-id="${escapeHtml(detailsId)}" aria-expanded="false">Ver mais</button></div><div id="${escapeHtml(detailsId)}" class="service-details muted section-hidden">${detalhes.map(([rotulo, valor]) => `<span><strong>${escapeHtml(rotulo)}:</strong> ${escapeHtml(valor)}</span>`).join('')}</div></li>`;
 }
 
 function formatarEventoEpidemiologico(item) {
@@ -385,6 +400,27 @@ ufSelect.addEventListener('change', async () => {
 cidadeSelect.addEventListener('change', () => {
     btnConsultar.disabled = cidadeSelect.value === '';
     atualizarUrlConsulta(ufSelect.value, cidadeSelect.value);
+});
+
+blocoEstabelecimentosEl.addEventListener('click', (event) => {
+    const button = event.target.closest('.service-toggle-btn');
+    if (!button) {
+        return;
+    }
+
+    const detailsId = button.dataset.detailsId || '';
+    if (!detailsId) {
+        return;
+    }
+
+    const detailsEl = document.getElementById(detailsId);
+    if (!detailsEl) {
+        return;
+    }
+
+    const isHidden = detailsEl.classList.toggle('section-hidden');
+    button.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
+    button.textContent = isHidden ? 'Ver mais' : 'Ver menos';
 });
 
 document.getElementById('consulta-form').addEventListener('submit', async (event) => {
