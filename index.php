@@ -205,16 +205,41 @@ function formatarEventoEpidemiologico(item) {
 }
 
 async function buscarJson(url, errorMessage) {
-    const response = await fetch(url);
+    let response;
+
+    try {
+        response = await fetch(url);
+    } catch (error) {
+        console.error('[maissaude] Falha de rede ao consultar API.', {
+            url,
+            erro: error,
+        });
+        throw new Error(`${errorMessage} (falha de rede).`);
+    }
+
+    const respostaBruta = await response.text();
     let data;
 
     try {
-        data = await response.json();
+        data = respostaBruta ? JSON.parse(respostaBruta) : {};
     } catch (error) {
+        console.error('[maissaude] Resposta JSON inválida.', {
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            respostaBruta,
+            erro: error,
+        });
         throw new Error(`Resposta JSON inválida: ${error.message}`);
     }
 
     if (!response.ok || data.erro) {
+        console.error('[maissaude] Erro retornado pela API.', {
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            payload: data,
+        });
         throw new Error(data.erro || errorMessage);
     }
 
@@ -319,6 +344,10 @@ async function carregarCidades(uf, cidadeSelecionada = '') {
         }
         statusEl.textContent = `${data.cidades.length} cidades carregadas.`;
     } catch (error) {
+        console.error('[maissaude] Falha ao carregar cidades.', {
+            uf,
+            erro: error,
+        });
         erroEl.textContent = error.message;
         statusEl.textContent = '';
     }

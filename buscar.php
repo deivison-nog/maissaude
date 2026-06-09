@@ -61,6 +61,7 @@ $dados = obterEstadosECidades($uf);
 if ($dados['erro'] !== '') {
     responderJson([
         'erro' => $dados['erro'],
+        'debug' => $dados['debug'] ?? null,
     ], 502);
 }
 
