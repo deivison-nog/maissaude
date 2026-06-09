@@ -669,6 +669,7 @@ function obterEstadosFixos(): array
 function obterEstadosECidades(string $uf = ''): array
 {
     $estados = obterEstadosFixos();
+    $uf = nomeEstadoParaSigla($uf);
 
     if ($uf === '') {
         return [
@@ -691,57 +692,90 @@ function obterEstadosECidades(string $uf = ''): array
         ];
     }
 
-    $cidadesPorEstado = [];
-    $registrosIndexados = [];
+    $normalizarListaMunicipios = static function (array $itens, string $ufPadrao): array {
+        $cidades = [];
+        $registros = [];
 
-    foreach ($lista as $item) {
-        if (!is_array($item)) {
-            continue;
+        foreach ($itens as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+
+            $ufRegistro = extrairValor($item, ['sigla_uf', 'siglaUf', 'uf', 'estado', 'uf_sigla']);
+            $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'nomeMunicipio', 'municipio_nome', 'cidade', 'nome']);
+            $regiaoSaude = extrairValor($item, ['regiao_saude', 'nome_regiao_saude']);
+            $macrorregiaoSaude = extrairValor($item, ['macrorregiao_saude', 'macrorregiao', 'nome_macrorregiao']);
+            $codigoMunicipio = extrairValor($item, ['codigo_municipio', 'codigoMunicipio', 'codigo_ibge', 'codigoIbge', 'id']);
+
+            if ($ufRegistro === '') {
+                $ufRegistro = extrairValorAninhado($item, ['microrregiao', 'mesorregiao', 'UF', 'sigla']);
+            }
+
+            if ($regiaoSaude === '') {
+                $regiaoSaude = extrairValorAninhado($item, ['microrregiao', 'nome']);
+            }
+
+            if ($macrorregiaoSaude === '') {
+                $macrorregiaoSaude = extrairValorAninhado($item, ['microrregiao', 'mesorregiao', 'nome']);
+            }
+
+            if ($ufRegistro === '') {
+                $ufRegistro = $ufPadrao;
+            }
+
+            if ($ufRegistro === '' || $municipio === '') {
+                continue;
+            }
+
+            $ufRegistro = nomeEstadoParaSigla($ufRegistro);
+            $municipio = limparNomeMunicipio($municipio);
+
+            if ($ufRegistro === '' || $municipio === '') {
+                continue;
+            }
+
+            $cidades[$ufRegistro][] = $municipio;
+
+            $chave = $ufRegistro . '|' . textoParaMinusculas($municipio);
+            $registros[$chave] = [
+                'uf' => $ufRegistro,
+                'municipio' => $municipio,
+                'codigo_municipio' => normalizarCodigoMunicipio($codigoMunicipio),
+                'regiao_saude' => $regiaoSaude,
+                'macrorregiao_saude' => $macrorregiaoSaude
+            ];
         }
 
-        $ufRegistro = extrairValor($item, ['sigla_uf', 'siglaUf', 'uf', 'estado', 'uf_sigla']);
-        $municipio = extrairValor($item, ['municipio', 'nome_municipio', 'nomeMunicipio', 'municipio_nome', 'cidade', 'nome']);
-        $regiaoSaude = extrairValor($item, ['regiao_saude', 'nome_regiao_saude']);
-        $macrorregiaoSaude = extrairValor($item, ['macrorregiao_saude', 'macrorregiao', 'nome_macrorregiao']);
-        $codigoMunicipio = extrairValor($item, ['codigo_municipio', 'codigoMunicipio', 'codigo_ibge', 'codigoIbge', 'id']);
-
-        if ($ufRegistro === '') {
-            $ufRegistro = extrairValorAninhado($item, ['microrregiao', 'mesorregiao', 'UF', 'sigla']);
-        }
-
-        if ($regiaoSaude === '') {
-            $regiaoSaude = extrairValorAninhado($item, ['microrregiao', 'nome']);
-        }
-
-        if ($macrorregiaoSaude === '') {
-            $macrorregiaoSaude = extrairValorAninhado($item, ['microrregiao', 'mesorregiao', 'nome']);
-        }
-
-        if ($ufRegistro === '') {
-            $ufRegistro = $uf;
-        }
-
-        if ($ufRegistro === '' || $municipio === '') {
-            continue;
-        }
-
-        $ufRegistro = nomeEstadoParaSigla($ufRegistro);
-        $municipio = limparNomeMunicipio($municipio);
-
-        if ($ufRegistro === '' || $municipio === '') {
-            continue;
-        }
-
-        $cidadesPorEstado[$ufRegistro][] = $municipio;
-
-        $chave = $ufRegistro . '|' . textoParaMinusculas($municipio);
-        $registrosIndexados[$chave] = [
-            'uf' => $ufRegistro,
-            'municipio' => $municipio,
-            'codigo_municipio' => normalizarCodigoMunicipio($codigoMunicipio),
-            'regiao_saude' => $regiaoSaude,
-            'macrorregiao_saude' => $macrorregiaoSaude
+        return [
+            'cidadesPorEstado' => $cidades,
+            'registrosIndexados' => $registros,
         ];
+    };
+
+    $normalizado = $normalizarListaMunicipios($lista, $uf);
+    $cidadesPorEstado = $normalizado['cidadesPorEstado'];
+    $registrosIndexados = $normalizado['registrosIndexados'];
+
+    if (($cidadesPorEstado[$uf] ?? []) === []) {
+        $fallbacks = [
+            obterListaMunicipiosIbge($uf),
+            obterListaMunicipiosFallbackLocal($uf),
+        ];
+
+        foreach ($fallbacks as $fallback) {
+            if (isset($fallback['erro'])) {
+                continue;
+            }
+
+            $normalizadoFallback = $normalizarListaMunicipios($fallback, $uf);
+            if (($normalizadoFallback['cidadesPorEstado'][$uf] ?? []) === []) {
+                continue;
+            }
+
+            $cidadesPorEstado = $normalizadoFallback['cidadesPorEstado'];
+            $registrosIndexados = $normalizadoFallback['registrosIndexados'];
+            break;
+        }
     }
 
     foreach ($cidadesPorEstado as $ufKey => $cidades) {
